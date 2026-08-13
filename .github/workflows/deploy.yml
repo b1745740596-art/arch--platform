@@ -1,0 +1,87 @@
+name: Deploy
+
+# 推 main 时：先跑基础检查，再 SSH 到服务器重新构建发布。
+# 需在仓库 Settings → Secrets and variables → Actions 配置：
+#   SSH_HOST / SSH_USER / SSH_KEY / DEPLOY_PATH
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: home_design_agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Django deploy check
+        env:
+          DJANGO_DEBUG: 'false'
+          DJANGO_SECRET_KEY: ci-only-not-a-real-secret-key-0123456789
+          DJANGO_ALLOWED_HOSTS: example.com
+        run: python manage.py check --deploy
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build frontend
+        working-directory: home_design_agent/frontend
+        run: |
+          npm install
+          npm run build
+
+  deploy:
+    needs: check
+    runs-on: ubuntu-latest
+    # 只有配置了服务器信息才执行，避免 fork 或未配 secret 时报错
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "未配置 SSH_HOST，跳过自动部署"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" bash -se <<EOF
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            git pull --ff-only
+            docker compose up -d --build
+            docker compose ps
+          EOF
+
+      - name: Health check
+        env:
+          HEALTH_URL: ${{ secrets.HEALTH_URL }}
+        run: |
+          if [ -z "$HEALTH_URL" ]; then
+            echo "未配置 HEALTH_URL，跳过健康检查"
+            exit 0
+          fi
+          for i in $(seq 1 10); do
+            if curl -fsS "$HEALTH_URL"; then echo "healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "健康检查失败"; exit 1

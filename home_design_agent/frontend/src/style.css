@@ -1,0 +1,19 @@
+:root {
+  font-family: system-ui, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.5;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+body {
+  background: var(--el-bg-color-page, #f5f7fa);
+  color: var(--el-text-color-primary, #303133);
+}
+
+a { color: var(--el-color-primary, #409eff); text-decoration: none; }

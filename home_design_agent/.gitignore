@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+uploads/
+*.egg-info/
+db.sqlite3
+staticfiles/
+media/
+frontend_dist/
+frontend/node_modules/

@@ -1,0 +1,43 @@
+# ---- Toolchain / runtimes (large, machine-specific) ----
+.toolchain/
+
+# ---- Python virtual envs ----
+.venv/
+**/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ---- Env / secrets ----
+.env
+*.env
+
+# ---- Django / app data ----
+db.sqlite3
+db.sqlite3-shm
+db.sqlite3-wal
+**/db.sqlite3
+**/db.sqlite3-*
+staticfiles/
+**/staticfiles/
+media/
+**/media/
+uploads/
+**/uploads/
+
+# ---- Frontend build artifacts ----
+frontend_dist/
+**/frontend_dist/
+node_modules/
+**/node_modules/
+
+# ---- Caches / editors / OS ----
+.ruff_cache/
+**/.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/

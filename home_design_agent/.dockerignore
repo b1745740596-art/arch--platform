@@ -1,0 +1,17 @@
+.venv/
+**/__pycache__/
+**/*.pyc
+.ruff_cache/
+.git/
+.gitignore
+.env
+.DS_Store
+db.sqlite3
+db.sqlite3-*
+staticfiles/
+media/
+frontend_dist/
+frontend/node_modules/
+docs/
+tests/
+README.md
