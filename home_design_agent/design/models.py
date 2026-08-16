@@ -462,3 +462,30 @@ class GenerationConfig(models.Model):
     def load(cls):
         obj, _ = cls.objects.get_or_create(name='default')
         return obj
+
+
+class CustomerRequirement(TimestampedModel):
+    """用户需求收集：用户主动填写手机号、需求与预算，同步入库供运营跟进。"""
+
+    class Status(models.TextChoices):
+        NEW = 'new', '待跟进'
+        CONTACTED = 'contacted', '已联系'
+        CLOSED = 'closed', '已关闭'
+
+    name = models.CharField('姓名', max_length=50)
+    phone = models.CharField('手机号', max_length=20, db_index=True)
+    city = models.CharField('城市', max_length=50, blank=True)
+    community = models.CharField('小区', max_length=100, blank=True)
+    room_type = models.CharField('意向空间', max_length=50, blank=True)
+    style = models.CharField('意向风格', max_length=50, blank=True)
+    budget_min = models.PositiveIntegerField('预算下限(元)', null=True, blank=True)
+    budget_max = models.PositiveIntegerField('预算上限(元)', null=True, blank=True)
+    requirement = models.TextField('需求描述', blank=True)
+    status = models.CharField('跟进状态', max_length=10, choices=Status.choices, default=Status.NEW)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '用户需求收集'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.name}（{self.phone}）'

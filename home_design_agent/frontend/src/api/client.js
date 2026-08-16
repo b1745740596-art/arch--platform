@@ -72,6 +72,9 @@ export const api = {
   suggestPromptVariants: (params) => client.get('/prompt-modules/suggest/', { params }),
   // 生图工作流（后台编排，前端只读；mode 区分图生图 / 文生图）
   listWorkflows: () => client.get('/workflows/'),
+  // 用户需求收集
+  createRequirement: (data) => client.post('/requirements/', data),
+  listRequirements: (params) => client.get('/requirements/', { params }),
 }
 
 export default client

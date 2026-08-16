@@ -4,6 +4,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
 from .models import (
+    CustomerRequirement,
     Designer,
     DesignScheme,
     Furniture,
@@ -15,6 +16,7 @@ from .models import (
     ServiceProvider,
 )
 from .serializers import (
+    CustomerRequirementSerializer,
     DesignerSerializer,
     DesignSchemeSerializer,
     FurnitureSerializer,
@@ -117,6 +119,17 @@ class LeadViewSet(viewsets.ModelViewSet):
         if project.status not in (Project.Status.SIGNED,):
             project.status = Project.Status.LEAD
             project.save(update_fields=['status', 'updated_at'])
+
+
+class CustomerRequirementViewSet(viewsets.ModelViewSet):
+    """用户需求收集：前台可提交，运营在后台跟进。
+
+    用户侧只允许创建与查询自己的提交结果；这里按 MVP 简化为公开创建接口，
+    状态字段只读，避免用户伪造跟进状态。
+    """
+
+    queryset = CustomerRequirement.objects.all()
+    serializer_class = CustomerRequirementSerializer
 
 
 class ServiceProviderViewSet(viewsets.ModelViewSet):

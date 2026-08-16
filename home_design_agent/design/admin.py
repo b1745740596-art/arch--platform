@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
 from .models import (
+    CustomerRequirement,
     Designer,
     DesignScheme,
     Furniture,
@@ -85,6 +86,15 @@ class LeadAdmin(admin.ModelAdmin):
     list_display = ('contact_name', 'contact_phone', 'project', 'scheme', 'city', 'status', 'created_at')
     list_filter = ('status', 'city')
     search_fields = ('contact_name', 'contact_phone', 'project__title')
+
+
+@admin.register(CustomerRequirement)
+class CustomerRequirementAdmin(admin.ModelAdmin):
+    list_display = ('name', 'phone', 'city', 'community', 'room_type', 'style',
+                    'budget_min', 'budget_max', 'status', 'created_at')
+    list_filter = ('status', 'city', 'room_type', 'style')
+    search_fields = ('name', 'phone', 'community', 'requirement')
+    readonly_fields = ('created_at', 'updated_at')
 
 
 @admin.register(ServiceProvider)

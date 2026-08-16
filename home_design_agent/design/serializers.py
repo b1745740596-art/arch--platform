@@ -3,6 +3,7 @@ import re
 from rest_framework import serializers
 
 from .models import (
+    CustomerRequirement,
     Designer,
     DesignScheme,
     Furniture,
@@ -111,6 +112,28 @@ class LeadSerializer(serializers.ModelSerializer):
         model = Lead
         fields = '__all__'
         read_only_fields = ('status',)
+
+
+class CustomerRequirementSerializer(serializers.ModelSerializer):
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = CustomerRequirement
+        fields = '__all__'
+        read_only_fields = ('status',)
+
+    def validate_phone(self, value):
+        value = (value or '').strip()
+        if not re.fullmatch(r'1[3-9]\d{9}', value):
+            raise serializers.ValidationError('请输入正确的 11 位手机号。')
+        return value
+
+    def validate(self, attrs):
+        budget_min = attrs.get('budget_min')
+        budget_max = attrs.get('budget_max')
+        if budget_min is not None and budget_max is not None and budget_min > budget_max:
+            raise serializers.ValidationError({'budget_min': '预算下限不能大于预算上限。'})
+        return attrs
 
 
 class ServiceProviderSerializer(serializers.ModelSerializer):
