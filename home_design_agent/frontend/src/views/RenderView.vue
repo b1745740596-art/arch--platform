@@ -94,7 +94,7 @@ const furnitureImages = computed(() => furnitures.value.map((f) => f.image_url).
         <template #header><b>{{ t('render.inputHeader') }}</b></template>
         <el-upload
           drag :auto-upload="false" :limit="1" :show-file-list="false"
-          accept="image/jpeg,image/png" :on-change="onFileChange"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif" :on-change="onFileChange"
         >
           <template v-if="previewUrl">
             <img :src="previewUrl" class="preview" />

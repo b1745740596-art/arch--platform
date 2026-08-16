@@ -6,7 +6,7 @@ import { t } from '@/i18n'
 export const DEFAULT_IMAGE_RULES = {
   max_bytes: 10 * 1024 * 1024,
   min_bytes: 10 * 1024,
-  allowed_types: ['image/jpeg', 'image/png', 'image/webp'],
+  allowed_types: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'],
   min_side: 512,
   max_side: 8000,
   max_aspect_ratio: 3.0,
@@ -20,6 +20,8 @@ const TYPE_LABEL = {
   'image/jpeg': 'JPG',
   'image/png': 'PNG',
   'image/webp': 'WebP',
+  'image/heic': 'HEIC',
+  'image/heif': 'HEIF',
 }
 
 export function formatBytes(bytes) {

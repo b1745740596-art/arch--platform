@@ -188,7 +188,7 @@ function groupHint(group) {
       :limit="1"
       :show-file-list="false"
       :disabled="busy"
-      accept="image/jpeg,image/png,image/webp"
+      accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
       :on-change="onFileChange"
     >
       <div v-if="win.previewUrl" class="pv-wrap">
