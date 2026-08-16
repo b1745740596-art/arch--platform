@@ -1,4 +1,5 @@
 import django
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
@@ -22,9 +23,11 @@ from .serializers import (
     DesignSchemeSerializer,
     FurnitureSerializer,
     LeadSerializer,
+    LoginSerializer,
     OwnerSerializer,
     ProjectListSerializer,
     ProjectSerializer,
+    RegisterSerializer,
     RenderJobSerializer,
     RenderWorkflowSerializer,
     ServiceProviderSerializer,
@@ -42,6 +45,54 @@ def health(request):
         'app': 'design',
         'django': django.get_version(),
     })
+
+
+def _user_payload(user):
+    return {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'is_staff': user.is_staff,
+        'is_superuser': user.is_superuser,
+    }
+
+
+@api_view(['POST'])
+def register_user(request):
+    """用户端注册：只创建普通用户，`is_staff/is_superuser` 均为 False。"""
+    serializer = RegisterSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.save()
+    return Response(_user_payload(user), status=201)
+
+
+@api_view(['POST'])
+def login_user(request):
+    """用户端登录：使用 Django Session 登录，后台访问仍受 is_staff 限制。"""
+    serializer = LoginSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    username = serializer.validated_data['username']
+    password = serializer.validated_data['password']
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return Response({'detail': '用户名或密码错误。'}, status=400)
+    login(request, user)
+    return Response(_user_payload(user))
+
+
+@api_view(['POST'])
+def logout_user(request):
+    """用户端退出登录。"""
+    logout(request)
+    return Response({'detail': '已退出登录。'})
+
+
+@api_view(['GET'])
+def current_user(request):
+    """返回当前登录用户；未登录返回 401。"""
+    if not request.user.is_authenticated:
+        return Response({'detail': '未登录。'}, status=401)
+    return Response(_user_payload(request.user))
 
 
 @api_view(['GET'])

@@ -75,6 +75,11 @@ export const api = {
   // 用户需求收集
   createRequirement: (data) => client.post('/requirements/', data),
   listRequirements: (params) => client.get('/requirements/', { params }),
+  // 用户端账号
+  register: (data) => client.post('/auth/register/', data),
+  login: (data) => client.post('/auth/login/', data),
+  logout: () => client.post('/auth/logout/'),
+  getMe: () => client.get('/auth/me/'),
 }
 
 export default client

@@ -8,6 +8,8 @@ const routes = [
   { path: '/intake', name: 'intake', component: () => import('@/views/IntakeView.vue') },
   { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
   { path: '/requirement', name: 'requirement', component: () => import('@/views/RequirementView.vue') },
+  { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
+  { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
   {
     path: '/projects/:id',
     name: 'project-detail',

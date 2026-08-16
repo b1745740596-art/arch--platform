@@ -39,6 +39,8 @@ function switchLocale(locale) {
         <el-menu-item index="/projects">{{ t('nav.projects') }}</el-menu-item>
         <el-menu-item index="/requirement">{{ t('nav.requirement') }}</el-menu-item>
         <el-menu-item index="/intake">{{ t('nav.intake') }}</el-menu-item>
+        <el-menu-item index="/login">{{ t('nav.login') }}</el-menu-item>
+        <el-menu-item index="/register">{{ t('nav.register') }}</el-menu-item>
       </el-menu>
 
       <el-dropdown class="lang" trigger="click" @command="switchLocale">

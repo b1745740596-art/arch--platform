@@ -1,5 +1,6 @@
 import re
 
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from .models import (
@@ -331,3 +332,48 @@ class RenderJobSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     '存在无效的控制模块：' + '、'.join(unknown))
         return ','.join(codes)
+
+
+User = get_user_model()
+
+
+class RegisterSerializer(serializers.Serializer):
+    """用户端注册：只创建普通用户，不授予后台访问权限。"""
+
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    password = serializers.CharField(min_length=8, write_only=True)
+    password2 = serializers.CharField(min_length=8, write_only=True)
+
+    def validate_username(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('请输入用户名。')
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('该用户名已被注册。')
+        return value
+
+    def validate_email(self, value):
+        value = (value or '').strip().lower()
+        if value and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('该邮箱已被注册。')
+        return value
+
+    def validate(self, attrs):
+        if attrs.get('password') != attrs.get('password2'):
+            raise serializers.ValidationError({'password2': '两次输入的密码不一致。'})
+        return attrs
+
+    def create(self, validated_data):
+        return User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email') or '',
+            password=validated_data['password'],
+            is_staff=False,
+            is_superuser=False,
+        )
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
