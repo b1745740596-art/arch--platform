@@ -272,10 +272,6 @@ class RenderJobSerializer(serializers.ModelSerializer):
         if value is None:
             raise serializers.ValidationError('请上传毛坯照片。')
         limits = IMAGE_CONSTRAINTS
-        content_type = getattr(value, 'content_type', '') or ''
-        if content_type and content_type not in limits['allowed_types']:
-            raise serializers.ValidationError(
-                '照片格式仅支持 JPG / PNG / WebP。')
         size = getattr(value, 'size', 0) or 0
         if size > limits['max_bytes']:
             raise serializers.ValidationError(
