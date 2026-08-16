@@ -1,12 +1,15 @@
 <script setup>
-import { useRoute } from 'vue-router'
-import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { SUPPORTED_LOCALES, currentLocale, elementLocale, setLocale } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const activeIndex = computed(() => route.path)
 const { t } = useI18n()
+const auth = useAuthStore()
 
 const localeShort = computed(
   () => SUPPORTED_LOCALES.find((l) => l.value === currentLocale.value)?.short || '中',
@@ -16,6 +19,15 @@ function switchLocale(locale) {
   setLocale(locale)
   document.title = t('brand')
 }
+
+async function doLogout() {
+  await auth.logout()
+  router.push('/')
+}
+
+onMounted(() => {
+  auth.fetchMe()
+})
 </script>
 
 <template>
@@ -39,8 +51,6 @@ function switchLocale(locale) {
         <el-menu-item index="/projects">{{ t('nav.projects') }}</el-menu-item>
         <el-menu-item index="/requirement">{{ t('nav.requirement') }}</el-menu-item>
         <el-menu-item index="/intake">{{ t('nav.intake') }}</el-menu-item>
-        <el-menu-item index="/login">{{ t('nav.login') }}</el-menu-item>
-        <el-menu-item index="/register">{{ t('nav.register') }}</el-menu-item>
       </el-menu>
 
       <el-dropdown class="lang" trigger="click" @command="switchLocale">
@@ -63,7 +73,16 @@ function switchLocale(locale) {
         </template>
       </el-dropdown>
 
-      <a class="admin-link" href="/admin/" target="_blank">{{ t('nav.admin') }}</a>
+      <div class="user-actions">
+        <template v-if="auth.user">
+          <span class="username">{{ auth.user.username }}</span>
+          <el-button text @click="doLogout">{{ t('auth.logout') }}</el-button>
+        </template>
+        <template v-else>
+          <router-link class="user-link" to="/login">{{ t('nav.login') }}</router-link>
+          <router-link class="user-link" to="/register">{{ t('nav.register') }}</router-link>
+        </template>
+      </div>
     </el-header>
 
     <el-main class="app-main">
@@ -110,7 +129,21 @@ function switchLocale(locale) {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
 }
-.admin-link { color: rgba(255, 255, 255, 0.9); font-size: 14px; }
+.user-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #fff;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.username { opacity: 0.92; }
+.user-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+}
+.user-link:hover { color: #fff; text-decoration: underline; }
 .lang { flex: none; }
 .lang-trigger {
   display: flex;

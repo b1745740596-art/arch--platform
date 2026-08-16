@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   { path: '/', name: 'home', component: HomeView },
@@ -20,6 +21,18 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+const PUBLIC_PATHS = ['/', '/login', '/register']
+
+router.beforeEach(async (to) => {
+  if (PUBLIC_PATHS.includes(to.path)) return true
+  const auth = useAuthStore()
+  const user = await auth.fetchMe()
+  if (!user) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  return true
 })
 
 export default router

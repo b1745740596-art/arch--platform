@@ -2,7 +2,8 @@ import django
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from rest_framework import viewsets
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import (
@@ -38,6 +39,7 @@ from .services import build_preview_schemes
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def health(request):
     """环境自检端点，用于确认 Django 与 DRF 已正确装配。"""
     return Response({
@@ -58,6 +60,7 @@ def _user_payload(user):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def register_user(request):
     """用户端注册：只创建普通用户，`is_staff/is_superuser` 均为 False。"""
     serializer = RegisterSerializer(data=request.data)
@@ -67,6 +70,7 @@ def register_user(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def login_user(request):
     """用户端登录：使用 Django Session 登录，后台访问仍受 is_staff 限制。"""
     serializer = LoginSerializer(data=request.data)
@@ -81,6 +85,7 @@ def login_user(request):
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
 def logout_user(request):
     """用户端退出登录。"""
     logout(request)
@@ -88,6 +93,7 @@ def logout_user(request):
 
 
 @api_view(['GET'])
+@permission_classes([AllowAny])
 def current_user(request):
     """返回当前登录用户；未登录返回 401。"""
     if not request.user.is_authenticated:
@@ -96,6 +102,7 @@ def current_user(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def prompt_module_options(request):
     """下发前端可选项与输入约束（枚举、控制模块、图片/文本限制）。
 
@@ -108,6 +115,7 @@ def prompt_module_options(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def prompt_module_suggest(request):
     """发散选项：给出多套控制模块组合，供一键套用或分别开窗并行生成。"""
     return Response({'variants': suggest_variants(
@@ -120,10 +128,12 @@ def prompt_module_suggest(request):
 class OwnerViewSet(viewsets.ModelViewSet):
     queryset = Owner.objects.all()
     serializer_class = OwnerSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.prefetch_related('schemes').all()
+    permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -144,6 +154,7 @@ class ProjectViewSet(viewsets.ModelViewSet):
 class DesignSchemeViewSet(viewsets.ModelViewSet):
     queryset = DesignScheme.objects.select_related('project').all()
     serializer_class = DesignSchemeSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -163,6 +174,7 @@ class DesignSchemeViewSet(viewsets.ModelViewSet):
 class LeadViewSet(viewsets.ModelViewSet):
     queryset = Lead.objects.select_related('project', 'scheme').all()
     serializer_class = LeadSerializer
+    permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
         lead = serializer.save()
@@ -182,6 +194,7 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
 
     queryset = CustomerRequirement.objects.all()
     serializer_class = CustomerRequirementSerializer
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -236,16 +249,19 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
 class ServiceProviderViewSet(viewsets.ModelViewSet):
     queryset = ServiceProvider.objects.filter(is_active=True)
     serializer_class = ServiceProviderSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class DesignerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Designer.objects.filter(is_active=True)
     serializer_class = DesignerSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class FurnitureViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Furniture.objects.filter(is_active=True)
     serializer_class = FurnitureSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -263,6 +279,7 @@ class RenderWorkflowViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = RenderWorkflow.objects.filter(is_active=True).prefetch_related('steps')
     serializer_class = RenderWorkflowSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class RenderJobViewSet(viewsets.ModelViewSet):
@@ -275,6 +292,7 @@ class RenderJobViewSet(viewsets.ModelViewSet):
         .all()
     )
     serializer_class = RenderJobSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         qs = super().get_queryset()

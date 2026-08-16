@@ -1,11 +1,13 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { api } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 
+const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const { t } = useI18n()
 const formRef = ref()
 const submitting = ref(false)
@@ -24,9 +26,9 @@ async function submit() {
   await formRef.value.validate()
   submitting.value = true
   try {
-    await api.login({ username: form.username.trim(), password: form.password })
+    await auth.login({ username: form.username.trim(), password: form.password })
     ElMessage.success(t('auth.loginSuccess'))
-    router.push('/')
+    router.push(route.query.redirect || '/')
   } catch (e) {
     const data = e?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
