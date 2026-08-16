@@ -28,38 +28,60 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 启动
+### 启动（推荐：一条命令）
 
 ```bash
-python manage.py migrate
-python manage.py runserver
+cd "/Users/didi/Architecture Agent Platform/home_design_agent"
+./scripts/serve.sh
 ```
 
-> 注意：`DEBUG` 现在默认 **false**（生产安全默认值）。本地开发请先开启调试，
-> 否则 `/media/` 下的效果图不会被托管：
+`scripts/serve.sh` 按顺序做完 5 件事，`Ctrl+C` 停止：
+
+1. `npm run build` 构建前端 → `frontend_dist/`（自动注入 `.toolchain/node` 到 PATH，缺 `node_modules` 时先 `npm install`）
+2. `collectstatic` 把产物同步到 `staticfiles/`
+3. `migrate` 应用数据库迁移
+4. 结束 :8000 上的残留进程（避免旧进程抢请求 / 持有过期静态清单）
+5. 前台启动 `runserver --noreload`，并打印各入口 URL
+
+常用参数：
+
+| 参数 | 用途 |
+| --- | --- |
+| `--no-build` | 只改了后端，跳过前端构建（最快） |
+| `--debug` | 以 `DJANGO_DEBUG=true` 启动（详细报错、可浏览 API 页面） |
+| `--seed` | 顺带执行 `seed_prompt_modules --update` / `seed_workflows` / `seed_demo` |
+| `--port 8010` | 换端口（:8000 被别的用户占用时） |
+| `-h` | 查看用法 |
+
+脚本会自动设 `DJANGO_SERVE_MEDIA=true`。这一步不能省：`DEBUG` 默认 **false**，
+且本地没有 nginx，不开这个开关时 `/media/renders/*.png` 会 404、前端效果图空白。
+
+> 手工启动等价于（不推荐，容易漏步骤导致白屏）：
 >
 > ```bash
-> cp .env.example .env    # 然后把 DJANGO_DEBUG 改成 true
-> # 或临时：
-> DJANGO_DEBUG=true python manage.py runserver
+> source .venv/bin/activate
+> (cd frontend && npm run build)          # 改了前端才需要
+> python manage.py collectstatic --noinput  # 漏掉这步 → /static/spa/*.js 全 404，整站白屏
+> python manage.py migrate
+> DJANGO_SERVE_MEDIA=true python manage.py runserver 0.0.0.0:8000 --noreload
 > ```
 >
-> `.env` 已在 `.gitignore` 中，不会入库。
+> 关键点：`DEBUG=false` 时 `/static/` 由 WhiteNoise 从 `STATIC_ROOT`（`staticfiles/`）托管，
+> 而 Vite 产物只落在 `frontend_dist/`；**必须 `collectstatic` 且之后重启 Django**
+> （WhiteNoise 只在进程启动时扫描静态清单）。
+>
+> 也可 `cp .env.example .env` 并把 `DJANGO_DEBUG` 改成 `true` 长期开发；`.env` 已在 `.gitignore` 中。
 
 访问入口：http://localhost:8000/ （前端首页）
+设计工作台：`/studio`　效果图列表：`/render`
 自检端点：`GET /api/design/health/` → `{"status":"ok",...}`
 管理后台：`/admin/`（SimpleUI 主题，账号见团队约定）
 
-### 修改前端后需重新构建
+首次打开若仍白屏，按 `Cmd+Shift+R` 硬刷新，清掉此前 404 的资源缓存。
 
-改动 `frontend/src` 后重新构建产物，Django 立即生效（无需重启）：
+### 修改前端后
 
-```bash
-export PATH="/Users/didi/Architecture Agent Platform/.toolchain/node/bin:$PATH"
-cd frontend
-npm install      # 首次
-npm run build    # 产物输出到 ../frontend_dist/
-```
+重跑 `./scripts/serve.sh` 即可（构建 + 收集静态 + 重启一步到位）。
 
 可选：若想用 Vite 热更新加速开发，`npm run dev`（:5173）会代理 `/api`、`/admin`、`/media` 到 Django；
 但正式访问与部署统一走 :8000。
@@ -92,6 +114,9 @@ home_design_agent/
 │   │   └── App.vue
 │   └── vite.config.js      # base=/static/spa/，产物输出到 ../frontend_dist
 ├── frontend_dist/          # 前端构建产物（Django 托管，git 忽略）
+├── staticfiles/            # collectstatic 输出，WhiteNoise 从这里托管 /static/
+├── scripts/
+│   └── serve.sh            # 本地一键启动：构建→收集静态→迁移→清端口→起服务
 └── tests/
 ```
 
