@@ -1,4 +1,5 @@
 import django
+from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -130,6 +131,55 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
 
     queryset = CustomerRequirement.objects.all()
     serializer_class = CustomerRequirementSerializer
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        """需求提交后同步到业主、项目与留资线索，方便后台统一跟进。"""
+        requirement = serializer.save()
+
+        owner, owner_created = Owner.objects.get_or_create(
+            phone=requirement.phone,
+            defaults={
+                'name': requirement.name,
+                'city': requirement.city,
+                'community': requirement.community,
+            },
+        )
+        if not owner_created:
+            owner.name = requirement.name or owner.name
+            owner.city = requirement.city or owner.city
+            owner.community = requirement.community or owner.community
+            owner.save(update_fields=['name', 'city', 'community', 'updated_at'])
+
+        owner.preference_tags = list(dict.fromkeys(
+            [tag for tag in (requirement.room_type, requirement.style, '需求登记') if tag]
+            + (owner.preference_tags or [])
+        ))
+        owner.save(update_fields=['preference_tags', 'updated_at'])
+
+        project = Project.objects.create(
+            owner=owner,
+            title=f'{requirement.city or "未填写城市"}·{requirement.room_type or "装修需求"}',
+            city=requirement.city,
+            community=requirement.community,
+            budget_min=requirement.budget_min,
+            budget_max=requirement.budget_max,
+            requirement_summary={
+                'requirement': requirement.requirement,
+                'room_type': requirement.room_type,
+                'style': requirement.style,
+            },
+            status=Project.Status.REQUIREMENT,
+        )
+
+        Lead.objects.create(
+            project=project,
+            contact_name=requirement.name,
+            contact_phone=requirement.phone,
+            city=requirement.city,
+            community=requirement.community,
+            remark=requirement.requirement,
+        )
 
 
 class ServiceProviderViewSet(viewsets.ModelViewSet):
