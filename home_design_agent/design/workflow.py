@@ -204,6 +204,113 @@ def step_analyze_input(ctx: WorkflowContext, params: dict) -> str:
     return f'亮度={brightness_label} 色调={tone_label} 构图={orientation}'
 
 
+def step_mark_doors(ctx: WorkflowContext, params: dict) -> str:
+    """识别上传图中的门洞，并注入「门洞区域禁止摆放家具」的提示词约束。
+
+    门洞通常表现为竖直的长方形开口，且底部接近地面。这里用边缘检测 +
+    轮廓比例过滤做启发式识别，精度适合生成效果图的软约束，不作为精确测量。
+    """
+    import cv2
+    import numpy as np
+
+    data = ctx.load_input()
+    image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError('无法解析上传图，无法标记门洞')
+    height, width = image.shape[:2]
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(
+        blurred,
+        int(params.get('canny_low', 50)),
+        int(params.get('canny_high', 150)),
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges = cv2.dilate(edges, kernel, iterations=1)
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    aspect_min = float(params.get('aspect_min', 1.5))
+    aspect_max = float(params.get('aspect_max', 3.8))
+    min_area_ratio = float(params.get('min_area_ratio', 0.008))
+    min_w_ratio = float(params.get('min_w_ratio', 0.04))
+    max_w_ratio = float(params.get('max_w_ratio', 0.45))
+    min_h_ratio = float(params.get('min_h_ratio', 0.20))
+    max_h_ratio = float(params.get('max_h_ratio', 0.95))
+    max_doors = int(params.get('max_doors', 8))
+
+    candidates = []
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        x, y, box_w, box_h = cv2.boundingRect(contour)
+        aspect = box_h / box_w if box_w else 0.0
+        bottom = y + box_h
+        if area < width * height * min_area_ratio:
+            continue
+        if not (aspect_min <= aspect <= aspect_max):
+            continue
+        if not (min_w_ratio * width <= box_w <= max_w_ratio * width):
+            continue
+        if not (min_h_ratio * height <= box_h <= max_h_ratio * height):
+            continue
+        if bottom < height * 0.35 or bottom > height * 0.98:
+            continue
+        candidates.append((area, x, y, box_w, box_h))
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    doors = []
+    for _, x, y, box_w, box_h in candidates:
+        overlap = False
+        for door in doors:
+            ix = max(x, door['x'])
+            iy = max(y, door['y'])
+            ixx = min(x + box_w, door['x'] + door['w'])
+            iyy = min(y + box_h, door['y'] + door['h'])
+            inter = max(0, ixx - ix) * max(0, iyy - iy)
+            union = box_w * box_h + door['w'] * door['h'] - inter
+            if union and inter / union > 0.35:
+                overlap = True
+                break
+        if overlap:
+            continue
+        doors.append({'x': x, 'y': y, 'w': box_w, 'h': box_h})
+        if len(doors) >= max_doors:
+            break
+
+    ctx.input_meta['door_openings'] = doors
+
+    if params.get('inject_prompt', True):
+        positive = (
+            'keep all door openings and walkways completely clear; '
+            'do not place any furniture, cabinetry, plants or storage in front of any door'
+        )
+        negative = (
+            'furniture blocking a doorway, furniture in front of doors, '
+            'obstructed entrances and walkways'
+        )
+        if ctx.prompt:
+            ctx.prompt = f'{ctx.prompt}, {positive}'
+            ctx.negative_prompt = (
+                f'{ctx.negative_prompt}, {negative}'
+                if ctx.negative_prompt
+                else negative
+            )
+        else:
+            existing_hint = ctx.input_meta.get('prompt_hint') or ''
+            ctx.input_meta['prompt_hint'] = (
+                f'{existing_hint}, {positive}' if existing_hint else positive
+            )
+        note = '门洞区域保持畅通，不可摆放家具、柜体或遮挡物；'
+        ctx.note_extra = f'{ctx.note_extra}{note}' if ctx.note_extra else note
+
+    if not doors:
+        return '未识别到明显门洞，已注入通用门洞避让约束'
+    summaries = '、'.join(
+        f'({d["x"]},{d["y"]},{d["w"]}×{d["h"]})' for d in doors
+    )
+    return f'识别到 {len(doors)} 个门洞：{summaries}'
+
+
 def step_match_furniture(ctx: WorkflowContext, params: dict) -> str:
     """匹配家具库，并按需补齐商品图。"""
     from .imagegen import _match_furnitures
@@ -449,6 +556,7 @@ STEP_HANDLERS = {
     WorkflowStep.Kind.RESIZE_INPUT: step_resize_input,
     WorkflowStep.Kind.ENHANCE_INPUT: step_enhance_input,
     WorkflowStep.Kind.ANALYZE_INPUT: step_analyze_input,
+    WorkflowStep.Kind.MARK_DOORS: step_mark_doors,
     WorkflowStep.Kind.MATCH_FURNITURE: step_match_furniture,
     WorkflowStep.Kind.BUILD_PROMPT: step_build_prompt,
     WorkflowStep.Kind.APPEND_PROMPT: step_append_prompt,

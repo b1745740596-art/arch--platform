@@ -160,6 +160,7 @@ class WorkflowStepInline(admin.TabularInline):
         '工作流步骤（params 常用键：'
         '缩放 {"max_side":1536}；增强/调色 {"brightness":1.08,"contrast":1.12,'
         '"saturation":1.05,"sharpness":1.15}；匹配家具 {"limit":6}；'
+        '标记门洞 {"min_area_ratio":0.008,"aspect_min":1.5,"aspect_max":3.8,"max_doors":8}；'
         '装配提示词 {"use_image_analysis":true}；追加提示词 {"positive":"","negative":""}；'
         '图生图 {"preserve_space":true,"fallback_to_text2img":true,"max_side":1024}；'
         '水印 {"text":"AI 效果图 · 仅供参考","position":"bottom_right","opacity":0.45}）'

@@ -379,6 +379,7 @@ class WorkflowStep(TimestampedModel):
         ENHANCE_INPUT = 'enhance_input', '增强上传图(亮度/对比度/锐化)'
         # ---- 分析与提示词 ----
         ANALYZE_INPUT = 'analyze_input', '分析上传图(亮度/色调/朝向)'
+        MARK_DOORS = 'mark_doors', '标记门洞(禁止摆放家具)'
         MATCH_FURNITURE = 'match_furniture', '匹配家具库'
         BUILD_PROMPT = 'build_prompt', '装配提示词(控制模块)'
         APPEND_PROMPT = 'append_prompt', '追加提示词片段'
