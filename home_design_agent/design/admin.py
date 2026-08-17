@@ -168,24 +168,41 @@ class WorkflowStepInline(admin.TabularInline):
 
 @admin.register(RenderWorkflow)
 class RenderWorkflowAdmin(admin.ModelAdmin):
-    list_display = ('name', 'step_count', 'is_default', 'is_active', 'stop_on_error', 'updated_at')
-    list_filter = ('is_default', 'is_active')
+    list_display = (
+        'name', 'tag_list', 'step_count', 'is_default', 'is_active',
+        'created_by', 'updated_at',
+    )
+    list_filter = ('is_default', 'is_active', 'created_by')
     search_fields = ('name', 'description')
+    list_editable = ('is_active',)
     inlines = (WorkflowStepInline,)
+    readonly_fields = ('created_by',)
     fieldsets = (
-        ('基础', {'fields': ('name', 'description')}),
+        ('基础', {'fields': ('name', 'description', 'tags')}),
         ('生效控制', {
             'fields': ('is_default', 'is_active', 'stop_on_error'),
             'description': (
                 '默认工作流唯一：勾选后其他工作流会自动取消默认。'
-                '任务未指定工作流时使用默认工作流；没有默认工作流则走内置最简链路。'
+                '未指定工作流时会先按分类标签自动匹配；无匹配时回退默认工作流；'
+                '仍无默认则走内置最简链路。'
             ),
         }),
+        ('创建信息', {'fields': ('created_by', 'updated_at')}),
     )
+
+    @admin.display(description='分类标签')
+    def tag_list(self, obj):
+        tags = obj.tags or []
+        return '、'.join(str(tag) for tag in tags) or '-'
 
     @admin.display(description='步骤数')
     def step_count(self, obj):
         return obj.steps.filter(is_active=True).count()
+
+    def save_model(self, request, obj, form, change):
+        if not change and not obj.created_by_id:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(WorkflowStep)

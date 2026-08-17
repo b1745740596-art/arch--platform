@@ -484,11 +484,12 @@ def _plan(workflow: RenderWorkflow | None):
 def run_workflow(job: RenderJob, module_codes=None, workflow: RenderWorkflow | None = None):
     """按工作流执行一次渲染，返回 (context, log, errors)。
 
-    引擎只负责调度与记录；具体行为都在步骤处理器里。
+    未显式指定 workflow 时，会按任务的空间/风格/预算档位与工作流分类标签
+    自动匹配；无匹配再回退默认工作流。引擎只负责调度与记录；具体行为都在步骤处理器里。
     上传图经预处理步骤后才进入生图，成图经后处理步骤后才交付给用户。
     """
     config = GenerationConfig.load()
-    workflow = RenderWorkflow.resolve(workflow)
+    workflow = RenderWorkflow.resolve(workflow, job=job)
     ctx = WorkflowContext(
         job=job, config=config, workflow_used=workflow, module_codes=module_codes or [])
 

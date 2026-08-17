@@ -255,7 +255,7 @@ SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
 # 自定义左侧菜单，按 PRD 功能域组织
 SIMPLEUI_CONFIG = {
     'system_keep': True,
-    'menu_display': ['Arch_AI Platform', '用户管理'],
+    'menu_display': ['Arch_AI Platform', '工作流', '用户管理'],
     'dynamic': False,
     'menus': [
         {
@@ -272,6 +272,14 @@ SIMPLEUI_CONFIG = {
                 {'name': '线索留资', 'icon': 'fas fa-address-book', 'url': '/admin/design/lead/'},
                 {'name': '订单详情', 'icon': 'fas fa-file-invoice', 'url': '/admin/design/orderdetail/'},
                 {'name': '生成配置(API)', 'icon': 'fas fa-key', 'url': '/admin/design/generationconfig/'},
+            ],
+        },
+        {
+            'name': '工作流',
+            'icon': 'fas fa-project-diagram',
+            'models': [
+                {'name': '生图工作流', 'icon': 'fas fa-sitemap', 'url': '/admin/design/renderworkflow/'},
+                {'name': '工作流步骤', 'icon': 'fas fa-list-ol', 'url': '/admin/design/workflowstep/'},
             ],
         },
         {

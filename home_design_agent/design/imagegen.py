@@ -448,7 +448,8 @@ def run_render_job(job: RenderJob, module_codes=None, workflow=None) -> RenderJo
 
     - module_codes：前端提交的 prompt 控制模块编码；为空时沿用任务上已关联的
       模块，仍为空则回退到后端默认模块。真正的提示词文本始终来自后端；
-    - workflow：使用的生图工作流；为空时取默认工作流，没有配置则走内置链路。
+    - workflow：显式指定使用的生图工作流；为空时按工作流分类标签自动匹配
+      空间/风格/预算档位，无匹配再回退默认工作流，仍无则走内置链路。
       上传图先经工作流的预处理步骤，成图再经后处理步骤，最后交付给用户。
     """
     from .workflow import deliver_output, run_workflow

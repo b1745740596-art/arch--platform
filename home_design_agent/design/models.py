@@ -292,11 +292,20 @@ class RenderWorkflow(TimestampedModel):
 
     name = models.CharField('工作流名称', max_length=80, unique=True)
     description = models.CharField('说明', max_length=200, blank=True)
+    tags = models.JSONField(
+        '分类标签', default=list, blank=True,
+        help_text='由创建者打标签，如 ["客厅","现代简约","品质","图生图"]；'
+                  'AI 生图时会根据空间/风格/预算档位自动匹配',
+    )
     is_default = models.BooleanField('默认工作流', default=False,
-        help_text='任务未指定工作流时使用；只应有一个默认')
+        help_text='无标签匹配且未指定工作流时使用；只应有一个默认')
     is_active = models.BooleanField('启用', default=True)
     stop_on_error = models.BooleanField('步骤失败即终止', default=False,
         help_text='关闭时单步失败仅记录并跳过，继续后续步骤（推荐）')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='render_workflows', verbose_name='创建者',
+    )
 
     class Meta:
         verbose_name = verbose_name_plural = '生图工作流'
@@ -313,10 +322,46 @@ class RenderWorkflow(TimestampedModel):
             RenderWorkflow.objects.exclude(pk=self.pk).filter(is_default=True).update(is_default=False)
 
     @classmethod
-    def resolve(cls, workflow=None):
-        """取用工作流：显式指定 → 默认 → 无（走内置最简链路）。"""
+    def _normalize_tag(cls, value):
+        return str(value or '').strip().lower()
+
+    @classmethod
+    def match_for_job(cls, job):
+        """按空间/风格/预算档位匹配已启用的工作流，返回评分最高者。
+
+        没有 tag 命中时返回 None，由 resolve 继续回退到默认工作流。
+        """
+        tokens = {
+            cls._normalize_tag(value)
+            for value in (job.room_type, job.style, job.budget_tier)
+            if value
+        }
+        best_score = 0
+        best = None
+        for workflow in cls.objects.filter(is_active=True):
+            tags = {cls._normalize_tag(tag) for tag in (workflow.tags or [])}
+            score = len(tags & tokens)
+            if score <= 0:
+                continue
+            if (
+                best is None
+                or score > best_score
+                or (score == best_score and workflow.is_default and not best.is_default)
+                or (score == best_score and workflow.pk > best.pk)
+            ):
+                best_score = score
+                best = workflow
+        return best
+
+    @classmethod
+    def resolve(cls, workflow=None, job=None):
+        """取用工作流：显式指定 → 按 tag 自动匹配 → 默认 → 无（走内置链路）。"""
         if workflow and workflow.is_active:
             return workflow
+        if job is not None:
+            matched = cls.match_for_job(job)
+            if matched:
+                return matched
         return cls.objects.filter(is_active=True, is_default=True).first()
 
     def active_steps(self):

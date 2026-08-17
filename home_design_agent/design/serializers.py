@@ -233,8 +233,8 @@ class RenderWorkflowSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = RenderWorkflow
-        fields = ('id', 'name', 'description', 'is_default', 'steps', 'step_count',
-                  'mode', 'mode_display')
+        fields = ('id', 'name', 'description', 'tags', 'is_default', 'is_active',
+                  'steps', 'step_count', 'mode', 'mode_display')
 
     def get_steps(self, obj):
         active = [s for s in obj.steps.all() if s.is_active]
