@@ -131,7 +131,22 @@ class HomeOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = HomeOrder
         fields = '__all__'
-        read_only_fields = ('status', 'user')
+        read_only_fields = ('order_no', 'status', 'user')
+
+    def validate_customer_phone(self, value):
+        value = (value or '').strip()
+        if value and not re.fullmatch(r'[\d+\- ]{6,20}', value):
+            raise serializers.ValidationError('请输入有效的联系电话。')
+        return value
+
+    def validate_items(self, value):
+        items = value or []
+        for item in items:
+            price = item.get('price')
+            quantity = item.get('quantity')
+            if price is not None and quantity is not None:
+                item['amount'] = int(price) * int(quantity)
+        return items
 
 
 class LeadSerializer(serializers.ModelSerializer):

@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
+import uuid
 
 
 class TimestampedModel(models.Model):
@@ -540,8 +542,13 @@ class HomeOrder(TimestampedModel):
         PENDING = 'pending', '待确认'
         CONFIRMED = 'confirmed', '已确认'
         PAID = 'paid', '已支付'
+        COMPLETED = 'completed', '已完成'
         CANCELLED = 'cancelled', '已取消'
 
+    order_no = models.CharField(
+        '订单编号', max_length=32, unique=True, blank=True, editable=False,
+        help_text='系统自动生成，如 HD20260817123000A1B2C3',
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
         related_name='home_orders', verbose_name='用户',
@@ -555,8 +562,14 @@ class HomeOrder(TimestampedModel):
         related_name='home_orders', verbose_name='关联报告',
     )
     title = models.CharField('订单名称', max_length=120, blank=True)
+    customer_name = models.CharField('客户姓名', max_length=50, blank=True)
+    customer_phone = models.CharField('客户电话', max_length=20, blank=True, db_index=True)
+    remark = models.TextField('客户备注', blank=True)
+    items = models.JSONField('订单明细', default=list, blank=True,
+        help_text='[{name, category, price, quantity, amount}]')
     amount_min = models.PositiveIntegerField('预算下限(元)', null=True, blank=True)
     amount_max = models.PositiveIntegerField('预算上限(元)', null=True, blank=True)
+    total_amount = models.PositiveIntegerField('订单总价(元)', null=True, blank=True)
     payload = models.JSONField('订单快照', default=dict, blank=True)
     status = models.CharField('订单状态', max_length=10, choices=Status.choices, default=Status.PENDING)
 
@@ -565,4 +578,14 @@ class HomeOrder(TimestampedModel):
         ordering = ('-created_at',)
 
     def __str__(self):
-        return self.title or f'订单#{self.pk}'
+        return f'{self.order_no or "订单"}（{self.get_status_display()}）'
+
+    def _generate_order_no(self):
+        prefix = timezone.localtime().strftime('HD%Y%m%d%H%M%S')
+        suffix = uuid.uuid4().hex[:6].upper()
+        return f'{prefix}{suffix}'
+
+    def save(self, *args, **kwargs):
+        if not self.order_no:
+            self.order_no = self._generate_order_no()
+        super().save(*args, **kwargs)

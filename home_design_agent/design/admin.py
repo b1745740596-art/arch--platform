@@ -244,7 +244,20 @@ class HomeReportAdmin(admin.ModelAdmin):
 
 @admin.register(HomeOrder)
 class HomeOrderAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'user', 'project', 'report', 'amount_min', 'amount_max', 'status', 'created_at')
-    list_filter = ('status',)
-    search_fields = ('title', 'user__username', 'project__title')
-    readonly_fields = ('payload', 'created_at', 'updated_at')
+    list_display = (
+        'order_no', 'customer_name', 'customer_phone', 'user', 'project',
+        'total_amount', 'status', 'created_at',
+    )
+    list_filter = ('status', 'created_at')
+    search_fields = (
+        'order_no', 'title', 'customer_name', 'customer_phone',
+        'user__username', 'project__title',
+    )
+    readonly_fields = ('order_no', 'payload', 'created_at', 'updated_at')
+    fieldsets = (
+        ('客户信息', {'fields': ('customer_name', 'customer_phone', 'user')}),
+        ('关联项目', {'fields': ('project', 'report', 'title')}),
+        ('订单金额', {'fields': ('amount_min', 'amount_max', 'total_amount')}),
+        ('订单明细', {'fields': ('items', 'remark', 'payload')}),
+        ('状态', {'fields': ('status', 'order_no')}),
+    )

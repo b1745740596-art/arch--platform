@@ -3,7 +3,7 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -210,7 +210,10 @@ class HomeReportViewSet(viewsets.ModelViewSet):
 
 
 class HomeOrderViewSet(viewsets.ModelViewSet):
-    """「我的家」项目订单：用户点击下单后生成，同时推进项目状态。"""
+    """「我的家」项目订单：记录客户下单、订单明细、金额与状态流转。
+
+    普通用户可创建订单并取消自己的待确认订单；确认、支付、完成由后台人员操作。
+    """
 
     queryset = HomeOrder.objects.select_related('project', 'report').all()
     serializer_class = HomeOrderSerializer
@@ -221,6 +224,19 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
         if not self.request.user.is_staff:
             qs = qs.filter(user=self.request.user)
         return qs
+
+    def _ensure_staff(self):
+        if not self.request.user.is_staff:
+            raise PermissionDenied('仅后台人员可执行该操作。')
+
+    def _ensure_order_owner_or_staff(self, order):
+        if order.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能操作其他用户的订单。')
+
+    def _transition(self, order, status):
+        order.status = status
+        order.save(update_fields=['status', 'updated_at'])
+        return Response(self.get_serializer(order).data)
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -239,12 +255,45 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
             amount_min = report.report.get('budget_min', amount_min)
             amount_max = report.report.get('budget_max', amount_max)
 
+        items = data.get('items') or []
+        if not items and report:
+            items = [
+                {
+                    'name': item.get('name', ''),
+                    'category': item.get('category_display', ''),
+                    'price': item.get('price'),
+                    'quantity': 1,
+                    'amount': item.get('price'),
+                }
+                for item in (report.report.get('furnitures') or [])
+            ]
+
+        total_amount = data.get('total_amount')
+        if total_amount is None and items:
+            total_amount = sum(
+                int(item.get('amount') or (int(item.get('price') or 0) * int(item.get('quantity') or 1)))
+                for item in items
+            )
+
+        customer_name = (
+            data.get('customer_name')
+            or self.request.user.get_full_name().strip()
+            or self.request.user.username
+        )
+        customer_phone = data.get('customer_phone') or ''
+        title = data.get('title') or (report.title if report else project.title)
+
         order = serializer.save(
             user=self.request.user,
             project=project,
             report=report,
+            title=title,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            items=items,
             amount_min=amount_min,
             amount_max=amount_max,
+            total_amount=total_amount,
         )
 
         if report:
@@ -253,6 +302,42 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
         project.status = Project.Status.SIGNED
         project.save(update_fields=['status', 'updated_at'])
         return order
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """用户可取消自己的待确认/已确认订单，后台人员可取消任何未完结订单。"""
+        order = self.get_object()
+        self._ensure_order_owner_or_staff(order)
+        if order.status in (HomeOrder.Status.PAID, HomeOrder.Status.COMPLETED, HomeOrder.Status.CANCELLED):
+            raise ValidationError('当前订单状态不能取消。')
+        return self._transition(order, HomeOrder.Status.CANCELLED)
+
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        """后台确认订单。"""
+        self._ensure_staff()
+        order = self.get_object()
+        if order.status != HomeOrder.Status.PENDING:
+            raise ValidationError('仅待确认订单可执行确认。')
+        return self._transition(order, HomeOrder.Status.CONFIRMED)
+
+    @action(detail=True, methods=['post'])
+    def mark_paid(self, request, pk=None):
+        """后台标记订单已支付。"""
+        self._ensure_staff()
+        order = self.get_object()
+        if order.status not in (HomeOrder.Status.PENDING, HomeOrder.Status.CONFIRMED):
+            raise ValidationError('仅待确认或已确认订单可标记为已支付。')
+        return self._transition(order, HomeOrder.Status.PAID)
+
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """后台标记订单已完成。"""
+        self._ensure_staff()
+        order = self.get_object()
+        if order.status != HomeOrder.Status.PAID:
+            raise ValidationError('仅已支付订单可标记为已完成。')
+        return self._transition(order, HomeOrder.Status.COMPLETED)
 
 
 class DesignSchemeViewSet(viewsets.ModelViewSet):
