@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -48,6 +49,10 @@ class Project(TimestampedModel):
     owner = models.ForeignKey(
         Owner, on_delete=models.CASCADE, related_name='projects',
         verbose_name='业主', null=True, blank=True,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        related_name='home_projects', verbose_name='关联用户', null=True, blank=True,
     )
     title = models.CharField('项目名称', max_length=100, blank=True)
     city = models.CharField('城市', max_length=50, blank=True)
@@ -489,3 +494,75 @@ class CustomerRequirement(TimestampedModel):
 
     def __str__(self):
         return f'{self.name}（{self.phone}）'
+
+
+class HomeReport(TimestampedModel):
+    """「我的家」报告书：把一次生成任务的结构化结果快照存到用户信息下。
+
+    每次成功输出都会创建一份报告，前端按此生成报告书并支持下单。
+    """
+
+    class Status(models.TextChoices):
+        SAVED = 'saved', '已保存'
+        ORDERED = 'ordered', '已下单'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='home_reports', verbose_name='用户',
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name='home_reports',
+        verbose_name='房屋项目',
+    )
+    render_job = models.ForeignKey(
+        'RenderJob', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='home_reports', verbose_name='生成任务',
+    )
+    title = models.CharField('报告名称', max_length=120, blank=True)
+    room_type = models.CharField('空间类型', max_length=50, blank=True)
+    style = models.CharField('目标风格', max_length=50, blank=True)
+    budget_tier = models.CharField('预算档位', max_length=10, blank=True)
+    report = models.JSONField('报告内容', default=dict, blank=True)
+    status = models.CharField('报告状态', max_length=10, choices=Status.choices, default=Status.SAVED)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '我的家报告书'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return self.title or f'报告#{self.pk}'
+
+
+class HomeOrder(TimestampedModel):
+    """「我的家」项目订单：用户在报告书页点击下单后生成，关联用户、项目与报告。"""
+
+    class Status(models.TextChoices):
+        PENDING = 'pending', '待确认'
+        CONFIRMED = 'confirmed', '已确认'
+        PAID = 'paid', '已支付'
+        CANCELLED = 'cancelled', '已取消'
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='home_orders', verbose_name='用户',
+    )
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name='home_orders',
+        verbose_name='房屋项目',
+    )
+    report = models.ForeignKey(
+        HomeReport, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='home_orders', verbose_name='关联报告',
+    )
+    title = models.CharField('订单名称', max_length=120, blank=True)
+    amount_min = models.PositiveIntegerField('预算下限(元)', null=True, blank=True)
+    amount_max = models.PositiveIntegerField('预算上限(元)', null=True, blank=True)
+    payload = models.JSONField('订单快照', default=dict, blank=True)
+    status = models.CharField('订单状态', max_length=10, choices=Status.choices, default=Status.PENDING)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '我的家项目订单'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return self.title or f'订单#{self.pk}'

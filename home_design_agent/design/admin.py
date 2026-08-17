@@ -8,6 +8,8 @@ from .models import (
     DesignScheme,
     Furniture,
     GenerationConfig,
+    HomeOrder,
+    HomeReport,
     Lead,
     Owner,
     Project,
@@ -230,3 +232,19 @@ class GenerationConfigAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # 单例：已存在则不允许新增
         return not GenerationConfig.objects.exists()
+
+
+@admin.register(HomeReport)
+class HomeReportAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'user', 'project', 'room_type', 'style', 'status', 'created_at')
+    list_filter = ('status', 'style')
+    search_fields = ('title', 'user__username', 'project__title')
+    readonly_fields = ('report', 'created_at', 'updated_at')
+
+
+@admin.register(HomeOrder)
+class HomeOrderAdmin(admin.ModelAdmin):
+    list_display = ('__str__', 'user', 'project', 'report', 'amount_min', 'amount_max', 'status', 'created_at')
+    list_filter = ('status',)
+    search_fields = ('title', 'user__username', 'project__title')
+    readonly_fields = ('payload', 'created_at', 'updated_at')

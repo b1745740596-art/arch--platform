@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -11,6 +12,8 @@ from .models import (
     Designer,
     DesignScheme,
     Furniture,
+    HomeOrder,
+    HomeReport,
     Lead,
     Owner,
     Project,
@@ -23,6 +26,8 @@ from .serializers import (
     DesignerSerializer,
     DesignSchemeSerializer,
     FurnitureSerializer,
+    HomeOrderSerializer,
+    HomeReportSerializer,
     LeadSerializer,
     LoginSerializer,
     OwnerSerializer,
@@ -135,6 +140,16 @@ class ProjectViewSet(viewsets.ModelViewSet):
     queryset = Project.objects.prefetch_related('schemes').all()
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        """普通用户只能访问自己名下项目，后台可看全部。"""
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     def get_serializer_class(self):
         if self.action == 'list':
             return ProjectListSerializer
@@ -149,6 +164,95 @@ class ProjectViewSet(viewsets.ModelViewSet):
         project.status = Project.Status.SCHEME
         project.save(update_fields=['status', 'updated_at'])
         return Response(DesignSchemeSerializer(created, many=True).data)
+
+
+class HomeReportViewSet(viewsets.ModelViewSet):
+    """「我的家」报告书：一次成功输出 = 一份报告 = 一个用户项目。
+
+    普通用户只能查看自己的报告；创建时自动把 user 与 project 绑定。
+    """
+
+    queryset = HomeReport.objects.select_related('project', 'render_job').all()
+    serializer_class = HomeReportSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        report_data = data.get('report') or {}
+        project = data.get('project')
+
+        if project is None:
+            title = (
+                data.get('title')
+                or report_data.get('title')
+                or f'{data.get("room_type") or "空间"}·{data.get("style") or "方案"} 装修报告'
+            )
+            project = Project.objects.create(
+                user=self.request.user,
+                title=title,
+                status=Project.Status.SCHEME,
+            )
+        elif project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能把报告保存到其他用户的项目。')
+
+        serializer.save(
+            user=self.request.user,
+            project=project,
+            report=report_data,
+        )
+
+
+class HomeOrderViewSet(viewsets.ModelViewSet):
+    """「我的家」项目订单：用户点击下单后生成，同时推进项目状态。"""
+
+    queryset = HomeOrder.objects.select_related('project', 'report').all()
+    serializer_class = HomeOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        report = data.get('report')
+        project = data.get('project') or (report.project if report else None)
+
+        if project is None:
+            raise PermissionDenied('请先选择要下单的项目或报告。')
+        if project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能为其他用户的项目下单。')
+
+        amount_min = data.get('amount_min')
+        amount_max = data.get('amount_max')
+        if (amount_min is None or amount_max is None) and report:
+            amount_min = report.report.get('budget_min', amount_min)
+            amount_max = report.report.get('budget_max', amount_max)
+
+        order = serializer.save(
+            user=self.request.user,
+            project=project,
+            report=report,
+            amount_min=amount_min,
+            amount_max=amount_max,
+        )
+
+        if report:
+            report.status = HomeReport.Status.ORDERED
+            report.save(update_fields=['status', 'updated_at'])
+        project.status = Project.Status.SIGNED
+        project.save(update_fields=['status', 'updated_at'])
+        return order
 
 
 class DesignSchemeViewSet(viewsets.ModelViewSet):

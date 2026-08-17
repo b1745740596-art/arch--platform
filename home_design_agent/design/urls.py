@@ -16,6 +16,8 @@ router.register('designers', views.DesignerViewSet)
 router.register('furnitures', views.FurnitureViewSet)
 router.register('renders', views.RenderJobViewSet)
 router.register('workflows', views.RenderWorkflowViewSet)
+router.register('reports', views.HomeReportViewSet, basename='home-report')
+router.register('orders', views.HomeOrderViewSet, basename='home-order')
 
 urlpatterns = [
     path('health/', views.health, name='health'),

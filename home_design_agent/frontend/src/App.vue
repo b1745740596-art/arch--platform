@@ -12,9 +12,7 @@ const auth = useAuthStore()
 
 const navItems = [
   { path: '/', key: 'nav.home', icon: 'HomeFilled' },
-  { path: '/render', key: 'nav.render', icon: 'MagicStick' },
-  { path: '/studio', key: 'nav.studio', icon: 'Grid' },
-  { path: '/projects', key: 'nav.projects', icon: 'FolderOpened' },
+  { path: '/my-home', key: 'nav.myHome', icon: 'House' },
   { path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' },
   { path: '/intake', key: 'nav.intake', icon: 'UploadFilled' },
 ]

@@ -8,6 +8,8 @@ from .models import (
     Designer,
     DesignScheme,
     Furniture,
+    HomeOrder,
+    HomeReport,
     Lead,
     Owner,
     Project,
@@ -104,6 +106,32 @@ class ProjectListSerializer(serializers.ModelSerializer):
             'budget_min', 'budget_max', 'status', 'status_display',
             'scheme_count', 'created_at',
         )
+
+
+class HomeReportSerializer(serializers.ModelSerializer):
+    """「我的家」报告书：报告正文用 JSON 快照保存，用户信息由视图自动写入。"""
+
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    project = serializers.PrimaryKeyRelatedField(
+        queryset=Project.objects.all(), required=False, allow_null=True,
+        help_text='不传时由后端根据报告内容自动创建一个项目。',
+    )
+
+    class Meta:
+        model = HomeReport
+        fields = '__all__'
+        read_only_fields = ('status', 'user')
+
+
+class HomeOrderSerializer(serializers.ModelSerializer):
+    """「我的家」项目订单：下单即创建，状态由后端管理。"""
+
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = HomeOrder
+        fields = '__all__'
+        read_only_fields = ('status', 'user')
 
 
 class LeadSerializer(serializers.ModelSerializer):

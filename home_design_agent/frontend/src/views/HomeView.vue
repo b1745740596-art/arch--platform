@@ -38,11 +38,11 @@ const showcase = [
         <h1>{{ t('home.heroTitle') }}</h1>
         <p class="hero-sub">{{ t('home.heroSubtitle') }}</p>
         <div class="hero-cta">
-          <el-button type="primary" size="large" @click="router.push('/render')">
+          <el-button type="primary" size="large" @click="router.push('/my-home')">
             <el-icon><MagicStick /></el-icon>
             {{ t('home.ctaPrimary') }}
           </el-button>
-          <el-button class="ghost-cta" size="large" @click="router.push('/projects')">
+          <el-button class="ghost-cta" size="large" @click="router.push('/my-home')">
             {{ t('home.ctaSecondary') }}
             <el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -79,7 +79,7 @@ const showcase = [
           <h2>{{ t('home.showcaseTitle') }}</h2>
           <p>{{ t('home.showcaseSubtitle') }}</p>
         </div>
-        <el-button class="section-action" @click="router.push('/render')">
+        <el-button class="section-action" @click="router.push('/my-home')">
           {{ t('home.showcaseAction') }}
           <el-icon><ArrowRight /></el-icon>
         </el-button>
