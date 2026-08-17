@@ -36,6 +36,32 @@ client.interceptors.response.use(
   (err) => Promise.reject(err),
 )
 
+// 用户系统独立实例：与设计域接口分开，便于后续拆分/替换认证域。
+const usersClient = axios.create({
+  baseURL: '/api/users',
+  timeout: 360000,
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
+  withCredentials: true,
+})
+
+usersClient.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toLowerCase()
+  if (!['get', 'head', 'options', 'trace'].includes(method)) {
+    const token = readCookie('csrftoken')
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers['X-CSRFToken'] = token
+    }
+  }
+  return config
+})
+
+usersClient.interceptors.response.use(
+  (res) => res.data,
+  (err) => Promise.reject(err),
+)
+
 export const api = {
   health: () => client.get('/health/'),
   // 项目
@@ -86,6 +112,17 @@ export const api = {
   login: (data) => client.post('/auth/login/', data),
   logout: () => client.post('/auth/logout/'),
   getMe: () => client.get('/auth/me/'),
+  // 用户系统：个人资料 / 密码
+  getProfile: () => usersClient.get('/me/'),
+  updateProfile: (data) => usersClient.patch('/me/', data),
+  changePassword: (data) => usersClient.post('/change-password/', data),
+  requestPasswordReset: (data) => usersClient.post('/password-reset/', data),
+  confirmPasswordReset: (data) => usersClient.post('/password-reset/confirm/', data),
+  // 后台用户管理（staff/superuser）
+  listAdminUsers: (params) => usersClient.get('/admin/users/', { params }),
+  createAdminUser: (data) => usersClient.post('/admin/users/', data),
+  updateAdminUser: (id, data) => usersClient.patch(`/admin/users/${id}/`, data),
+  deleteAdminUser: (id) => usersClient.delete(`/admin/users/${id}/`),
 }
 
 export default client

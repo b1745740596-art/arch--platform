@@ -30,6 +30,7 @@ spa_view = ensure_csrf_cookie(TemplateView.as_view(template_name='index.html'))
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/design/', include('design.urls')),
+    path('api/users/', include('users.urls')),
     # 前端首页
     path('', spa_view, name='spa'),
     # 客户端路由回落：非 admin/api/static/media 的路径都交给 Vue Router

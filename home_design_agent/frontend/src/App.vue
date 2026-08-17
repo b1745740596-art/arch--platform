@@ -10,12 +10,18 @@ const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
 
-const navItems = [
-  { path: '/', key: 'nav.home', icon: 'HomeFilled' },
-  { path: '/my-home', key: 'nav.myHome', icon: 'House' },
-  { path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' },
-  { path: '/intake', key: 'nav.intake', icon: 'UploadFilled' },
-]
+const navItems = computed(() => {
+  const items = [
+    { path: '/', key: 'nav.home', icon: 'HomeFilled' },
+    { path: '/my-home', key: 'nav.myHome', icon: 'House' },
+    { path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' },
+    { path: '/intake', key: 'nav.intake', icon: 'UploadFilled' },
+  ]
+  if (auth.user?.is_staff || auth.user?.is_superuser) {
+    items.push({ path: '/admin/users', key: 'nav.adminUsers', icon: 'UserFilled' })
+  }
+  return items
+})
 
 const localeShort = computed(
   () => SUPPORTED_LOCALES.find((l) => l.value === currentLocale.value)?.short || '中',
@@ -95,11 +101,25 @@ onMounted(() => {
             </el-dropdown>
 
             <template v-if="auth.user">
-              <div class="user-chip" :title="auth.user.username">
-                <span class="avatar">{{ avatarLetter }}</span>
-                <span class="username">{{ auth.user.username }}</span>
-              </div>
-              <button class="ghost-link" type="button" @click="doLogout">{{ t('auth.logout') }}</button>
+              <el-dropdown trigger="click">
+                <div class="user-chip" :title="auth.user.username" style="cursor:pointer">
+                  <span class="avatar">{{ avatarLetter }}</span>
+                  <span class="username">{{ auth.user.username }}</span>
+                  <el-icon class="lang-arrow"><ArrowDown /></el-icon>
+                </div>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="auth.user.is_staff || auth.user.is_superuser"
+                      @click="router.push('/admin/users')"
+                    >
+                      {{ t('nav.adminUsers') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item divided @click="doLogout">{{ t('auth.logout') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </template>
             <template v-else>
               <router-link class="auth-link" to="/login">{{ t('nav.login') }}</router-link>

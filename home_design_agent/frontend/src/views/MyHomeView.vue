@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import StudioView from './StudioView.vue'
@@ -17,9 +17,8 @@ const orders = ref([])
 const reportsLoading = ref(false)
 const ordersLoading = ref(false)
 const orderSubmitting = ref(false)
+const combining = ref(false)
 const selectedReportId = ref(null)
-
-const savedResultIds = new Set()
 
 const TABS = [
   { key: 'studio', icon: 'Grid', labelKey: 'myHome.tabStudio' },
@@ -33,6 +32,14 @@ const tierBudget = {
   高端: [320000, 600000],
 }
 
+const completedWindows = computed(
+  () => studio.windows.filter((w) => w.status === 'success' && w.result?.id),
+)
+const batchBusy = computed(
+  () => studio.windows.some((w) => ['queued', 'running', 'validating'].includes(w.status)),
+)
+const canCombine = computed(() => completedWindows.value.length > 0 && !batchBusy.value)
+
 const selectedReport = computed(
   () => reports.value.find((r) => r.id === selectedReportId.value) || reports.value[0] || null,
 )
@@ -45,6 +52,7 @@ const orderStatusType = {
   pending: 'warning',
   confirmed: 'primary',
   paid: 'success',
+  completed: 'success',
   cancelled: 'info',
 }
 
@@ -71,6 +79,92 @@ function buildRenovationAdvice(report) {
   const base = t('myHome.renovationBase')
   const note = report?.design_note ? ` ${report.design_note}` : ''
   return `${base}${note}`
+}
+
+function normalizeFurnitures(list) {
+  return (list || []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    brand: f.brand,
+    category_display: f.category_display,
+    price: f.price,
+    buy_url: f.buy_url,
+    image_url: f.image_url,
+  }))
+}
+
+function windowSnapshot(win) {
+  const result = win.result
+  const furnitures = normalizeFurnitures(result?.furnitures)
+  const total = furnitures.reduce((sum, f) => sum + (Number(f.price) || 0), 0)
+  const range = tierBudget[win.form.budget_tier] || [120000, 280000]
+  return {
+    title: win.title || `${win.form.room_type}·${win.form.style}`,
+    room_type: win.form.room_type,
+    style: win.form.style,
+    budget_tier: win.form.budget_tier,
+    result_url: result?.result_url || result?.result_image_url || null,
+    design_note: result?.design_note || '',
+    furnitures,
+    designer: result?.designer || null,
+    contractor: result?.contractor || null,
+    applied_modules: result?.applied_modules || [],
+    budget_min: range[0],
+    budget_max: range[1],
+    furniture_total: total,
+    budget_advice: buildBudgetAdvice(win, total),
+  }
+}
+
+function aggregateFurnitures(windows) {
+  const map = new Map()
+  for (const win of windows) {
+    for (const f of win.furnitures) {
+      const key = f.id || `${f.name}-${f.price}-${f.brand}`
+      if (!map.has(key)) map.set(key, f)
+    }
+  }
+  return [...map.values()]
+}
+
+function combinedTitle(windows) {
+  return t('myHome.combinedReportTitle', { count: windows.length })
+}
+
+function buildCombinedPayload() {
+  const windows = completedWindows.value.map(windowSnapshot)
+  const first = windows[0] || {}
+  const furnitures = aggregateFurnitures(windows)
+  const furnitureTotalValue = furnitures.reduce((sum, f) => sum + (Number(f.price) || 0), 0)
+  const budget_min = windows.reduce((sum, w) => sum + (Number(w.budget_min) || 0), 0)
+  const budget_max = windows.reduce((sum, w) => sum + (Number(w.budget_max) || 0), 0)
+  const notes = windows
+    .filter((w) => w.design_note)
+    .map((w) => `【${w.title}】${w.design_note}`)
+    .join('\n\n')
+
+  return {
+    title: combinedTitle(windows),
+    room_type: first.room_type || '',
+    style: first.style || '',
+    budget_tier: first.budget_tier || '',
+    result_url: first.result_url || null,
+    windows,
+    furnitures,
+    designer: first.designer || null,
+    contractor: first.contractor || null,
+    budget_min,
+    budget_max,
+    furniture_total: furnitureTotalValue,
+    design_note: notes,
+    budget_advice: t('myHome.combinedBudgetAdvice', {
+      count: windows.length,
+      min: money(budget_min),
+      max: money(budget_max),
+      furniture: money(furnitureTotalValue),
+    }),
+    window_count: windows.length,
+  }
 }
 
 async function loadReports() {
@@ -100,70 +194,6 @@ async function loadOrders() {
   }
 }
 
-async function saveWindowReport(win) {
-  const result = win.result
-  if (!result?.id) return
-  const furnitures = (result.furnitures || []).map((f) => ({
-    id: f.id,
-    name: f.name,
-    brand: f.brand,
-    category_display: f.category_display,
-    price: f.price,
-    buy_url: f.buy_url,
-    image_url: f.image_url,
-  }))
-  const total = furnitures.reduce((sum, f) => sum + (Number(f.price) || 0), 0)
-  const title = win.title || `${win.form.room_type}·${win.form.style}`
-  const range = tierBudget[win.form.budget_tier] || [120000, 280000]
-
-  try {
-    const saved = await api.saveReport({
-      project: win.projectId,
-      render_job: result.id,
-      title,
-      room_type: win.form.room_type,
-      style: win.form.style,
-      budget_tier: win.form.budget_tier,
-      report: {
-        title,
-        room_type: win.form.room_type,
-        style: win.form.style,
-        budget_tier: win.form.budget_tier,
-        result_url: result.result_url || result.result_image_url || null,
-        design_note: result.design_note || '',
-        furnitures,
-        designer: result.designer || null,
-        contractor: result.contractor || null,
-        applied_modules: result.applied_modules || [],
-        budget_min: range[0],
-        budget_max: range[1],
-        furniture_total: total,
-        budget_advice: buildBudgetAdvice(win, total),
-      }
-    })
-    selectedReportId.value = saved.id
-    await loadReports()
-    ElMessage.success(t('myHome.reportSaved'))
-  } catch (e) {
-    // 自动保存失败不阻塞生成流程，用户仍可在报告页手工重试
-    ElMessage.warning(t('myHome.reportSaveFailed', { msg: extractError(e) }))
-  }
-}
-
-watch(
-  () => studio.windows.map((w) => ({ id: w.id, status: w.status, resultId: w.result?.id })),
-  (list) => {
-    for (const item of list) {
-      if (item.status !== 'success' || !item.resultId || savedResultIds.has(item.resultId)) continue
-      const win = studio.windows.find((w) => w.id === item.id)
-      if (!win) continue
-      savedResultIds.add(item.resultId)
-      saveWindowReport(win)
-    }
-  },
-  { deep: true },
-)
-
 function extractError(e) {
   const data = e?.response?.data
   if (typeof data === 'string') return data
@@ -173,6 +203,60 @@ function extractError(e) {
     if (first) return `${first[0]}: ${[].concat(first[1]).join('; ')}`
   }
   return e?.message || String(e || '')
+}
+
+async function combineAndOrder() {
+  if (!canCombine.value) {
+    ElMessage.warning(t('myHome.combineUnavailable'))
+    return
+  }
+  combining.value = true
+  try {
+    const payload = buildCombinedPayload()
+    const firstWindow = completedWindows.value[0]
+    let projectId = studio.sessionProjectId || firstWindow.projectId
+
+    if (!projectId) {
+      const project = await api.createProject({ title: payload.title })
+      projectId = project.id
+      studio.sessionProjectId = project.id
+    }
+
+    const saved = await api.saveReport({
+      project: projectId,
+      render_job: firstWindow.result.id,
+      title: payload.title,
+      room_type: payload.room_type,
+      style: payload.style,
+      budget_tier: payload.budget_tier,
+      report: payload,
+    })
+
+    await api.createOrder({
+      project: projectId,
+      report: saved.id,
+      title: payload.title,
+      amount_min: payload.budget_min,
+      amount_max: payload.budget_max,
+      items: payload.furnitures.map((f) => ({
+        name: f.name,
+        category: f.category_display,
+        price: f.price,
+        quantity: 1,
+        amount: f.price,
+      })),
+      payload,
+    })
+
+    ElMessage.success(t('myHome.combinedCreated'))
+    selectedReportId.value = saved.id
+    await Promise.all([loadReports(), loadOrders()])
+    tab.value = 'orders'
+  } catch (e) {
+    ElMessage.error(t('myHome.combinedFailed', { msg: extractError(e) }))
+  } finally {
+    combining.value = false
+  }
 }
 
 async function placeOrder() {
@@ -212,6 +296,7 @@ function openWorkbench() {
 }
 
 onMounted(() => {
+  studio.startSession()
   loadReports()
   loadOrders()
 })
@@ -228,10 +313,23 @@ onMounted(() => {
         <h1>{{ t('myHome.title') }}</h1>
         <p>{{ t('myHome.description') }}</p>
       </div>
-      <el-button type="primary" size="large" @click="openWorkbench">
-        <el-icon><Plus /></el-icon>
-        {{ t('myHome.newTask') }}
-      </el-button>
+      <div class="head-actions">
+        <el-button
+          type="primary"
+          size="large"
+          :loading="combining"
+          :disabled="!canCombine"
+          @click="combineAndOrder"
+        >
+          <el-icon><DocumentAdd /></el-icon>
+          {{ t('myHome.combineAndOrder') }}
+          <template v-if="completedWindows.length">（{{ completedWindows.length }}）</template>
+        </el-button>
+        <el-button size="large" @click="openWorkbench">
+          <el-icon><Plus /></el-icon>
+          {{ t('myHome.newTask') }}
+        </el-button>
+      </div>
     </section>
 
     <div class="segmented">
@@ -275,6 +373,9 @@ onMounted(() => {
             <div class="report-item-title">{{ report.title || t('common.none') }}</div>
             <div class="report-item-meta">
               <span>{{ term(report.room_type) }} · {{ term(report.style) }}</span>
+              <span v-if="report.report?.window_count" class="report-count">
+                {{ t('myHome.windowCount', { count: report.report.window_count }) }}
+              </span>
               <el-tag size="small" :type="report.status === 'ordered' ? 'success' : 'info'">
                 {{ report.status_display }}
               </el-tag>
@@ -302,6 +403,20 @@ onMounted(() => {
             <el-icon><Picture /></el-icon>
             <span>{{ t('myHome.noImage') }}</span>
           </div>
+
+          <section v-if="reportData.windows?.length" class="report-section">
+            <h3><el-icon><Grid /></el-icon> {{ t('myHome.windowSchemes') }}</h3>
+            <div class="window-grid">
+              <div v-for="(w, index) in reportData.windows" :key="`${w.title}-${index}`" class="window-card">
+                <img v-if="w.result_url" :src="w.result_url" :alt="w.title" />
+                <div v-else class="window-ph"><el-icon><Picture /></el-icon></div>
+                <div class="window-info">
+                  <b>{{ w.title }}</b>
+                  <span>{{ term(w.room_type) }} · {{ term(w.style) }} · {{ term(w.budget_tier) }}</span>
+                </div>
+              </div>
+            </div>
+          </section>
 
           <section class="report-section">
             <h3><el-icon><EditPen /></el-icon> {{ t('myHome.designNote') }}</h3>
@@ -467,6 +582,13 @@ onMounted(() => {
   font-size: 14px;
 }
 
+.head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .segmented {
   display: inline-flex;
   align-self: center;
@@ -586,6 +708,15 @@ onMounted(() => {
   color: var(--brand-muted);
 }
 
+.report-count {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(200, 150, 98, 0.14);
+  color: var(--brand-wood-deep);
+  font-weight: 700;
+}
+
 .report-detail {
   padding: 26px;
 }
@@ -641,6 +772,56 @@ onMounted(() => {
 }
 
 .report-hero-empty :deep(.el-icon) { font-size: 42px; }
+
+.window-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.window-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(47, 107, 79, 0.06);
+}
+
+.window-card img,
+.window-ph {
+  width: 88px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+}
+
+.window-ph {
+  display: grid;
+  place-items: center;
+  color: var(--brand-muted);
+  background: rgba(47, 107, 79, 0.10);
+}
+
+.window-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.window-info b {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-info span {
+  color: var(--brand-muted);
+  font-size: 11px;
+}
 
 .report-section {
   padding: 16px 0;
@@ -778,5 +959,6 @@ onMounted(() => {
   .report-list { position: static; max-height: none; }
   .people-grid { grid-template-columns: 1fr; }
   .furniture-grid { grid-template-columns: 1fr; }
+  .window-grid { grid-template-columns: 1fr; }
 }
 </style>

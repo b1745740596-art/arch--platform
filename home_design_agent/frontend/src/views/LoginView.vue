@@ -52,6 +52,7 @@ async function submit() {
       <el-form-item>
         <el-button type="primary" :loading="submitting" @click="submit">{{ t('auth.loginSubmit') }}</el-button>
         <el-button @click="router.push('/register')">{{ t('auth.registerSubmit') }}</el-button>
+        <router-link class="forgot-link" to="/forgot-password">{{ t('passwordReset.forgotTitle') }}</router-link>
       </el-form-item>
     </el-form>
   </el-card>
@@ -59,4 +60,5 @@ async function submit() {
 
 <style scoped>
 .auth-card { max-width: 460px; margin: 0 auto; }
+.forgot-link { margin-left: auto; font-size: 13px; color: var(--brand-green); }
 </style>

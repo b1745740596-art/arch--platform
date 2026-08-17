@@ -12,6 +12,15 @@ const routes = [
   { path: '/requirement', name: 'requirement', component: () => import('@/views/RequirementView.vue') },
   { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
+  { path: '/account', name: 'account', component: () => import('@/views/AccountView.vue') },
+  { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/ForgotPasswordView.vue') },
+  { path: '/reset-password', name: 'reset-password', component: () => import('@/views/ResetPasswordView.vue') },
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: () => import('@/views/AdminUsersView.vue'),
+    meta: { requiresAdmin: true },
+  },
   {
     path: '/projects/:id',
     name: 'project-detail',
@@ -24,7 +33,7 @@ const router = createRouter({
   routes,
 })
 
-const PUBLIC_PATHS = ['/', '/login', '/register']
+const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password']
 
 router.beforeEach(async (to) => {
   if (PUBLIC_PATHS.includes(to.path)) return true
@@ -32,6 +41,9 @@ router.beforeEach(async (to) => {
   const user = await auth.fetchMe()
   if (!user) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  if (to.meta.requiresAdmin && !user.is_staff && !user.is_superuser) {
+    return { path: '/', replace: true }
   }
   return true
 })

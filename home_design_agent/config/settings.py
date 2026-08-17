@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'design',
+    'users',
 ]
 
 MIDDLEWARE = [
@@ -199,6 +200,20 @@ REST_FRAMEWORK = {
     ],
 }
 
+# ---- 用户系统 ----
+# 开发默认打印到控制台；生产在 .env 配置 SMTP（见 .env.example）。
+EMAIL_BACKEND = env(
+    'DJANGO_EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend',
+)
+EMAIL_HOST = env('DJANGO_EMAIL_HOST', default='')
+EMAIL_PORT = env.int('DJANGO_EMAIL_PORT', default=587)
+EMAIL_HOST_USER = env('DJANGO_EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('DJANGO_EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = env.bool('DJANGO_EMAIL_USE_TLS', default=True)
+DEFAULT_FROM_EMAIL = env('DJANGO_DEFAULT_FROM_EMAIL', default='noreply@example.com')
+PASSWORD_RESET_TIMEOUT_MINUTES = env.int('DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES', default=30)
+
 # 可浏览 API 页面只在开发环境暴露
 if DEBUG:
     REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'].append(
@@ -288,6 +303,8 @@ SIMPLEUI_CONFIG = {
             'models': [
                 {'name': '用户', 'icon': 'fas fa-user', 'url': '/admin/auth/user/'},
                 {'name': '用户组', 'icon': 'fas fa-users', 'url': '/admin/auth/group/'},
+                {'name': '用户资料', 'icon': 'fas fa-id-card', 'url': '/admin/users/userprofile/'},
+                {'name': '重置令牌', 'icon': 'fas fa-key', 'url': '/admin/users/passwordresettoken/'},
             ],
         },
     ],

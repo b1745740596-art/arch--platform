@@ -90,6 +90,8 @@ export const useStudioStore = defineStore('studio', () => {
   const optionsError = ref('')
   // 生图工作流（后台编排，前端只读展示与选择）
   const workflows = ref([])
+  // 当前工作台会话共享的项目 ID：同一批窗口合并为同一项目/报告/订单
+  const sessionProjectId = ref(null)
 
   // 等待执行的窗口 id 队列（FIFO）
   const queue = reactive([])
@@ -271,6 +273,11 @@ export const useStudioStore = defineStore('studio', () => {
 
   function resetAll() {
     for (const w of [...windows]) closeWindow(w.id)
+    sessionProjectId.value = null
+  }
+
+  function startSession() {
+    sessionProjectId.value = null
   }
 
   // ------------------------------------------------------------ 校验
@@ -390,10 +397,15 @@ export const useStudioStore = defineStore('studio', () => {
 
   async function ensureProject(win, signal) {
     if (win.projectId) return win.projectId
+    if (sessionProjectId.value) {
+      win.projectId = sessionProjectId.value
+      return sessionProjectId.value
+    }
     const project = await api.createProject(
       { title: t('render.projectTitle', { room: win.form.room_type, style: win.form.style }) },
       { signal },
     )
+    sessionProjectId.value = project.id
     win.projectId = project.id
     return project.id
   }
@@ -549,6 +561,7 @@ export const useStudioStore = defineStore('studio', () => {
     workflows,
     queue,
     runningCount,
+    sessionProjectId,
     // computed
     constraints,
     imageRules,
@@ -573,6 +586,7 @@ export const useStudioStore = defineStore('studio', () => {
     clearImage,
     releasePreview,
     resetAll,
+    startSession,
     windowIssues,
     isSubmittable,
     enqueue,
