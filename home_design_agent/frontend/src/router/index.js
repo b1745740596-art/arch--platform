@@ -13,12 +13,19 @@ const routes = [
   { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
   { path: '/account', name: 'account', component: () => import('@/views/AccountView.vue') },
+  { path: '/billing', name: 'billing', component: () => import('@/views/BillingView.vue') },
   { path: '/forgot-password', name: 'forgot-password', component: () => import('@/views/ForgotPasswordView.vue') },
   { path: '/reset-password', name: 'reset-password', component: () => import('@/views/ResetPasswordView.vue') },
   {
     path: '/admin/users',
     name: 'admin-users',
     component: () => import('@/views/AdminUsersView.vue'),
+    meta: { requiresAdmin: true },
+  },
+  {
+    path: '/admin/payments',
+    name: 'admin-payments',
+    component: () => import('@/views/AdminPaymentsView.vue'),
     meta: { requiresAdmin: true },
   },
   {

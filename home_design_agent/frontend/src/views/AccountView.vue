@@ -1,15 +1,21 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
 
 const { t } = useI18n()
+const router = useRouter()
 const account = useAccountStore()
 const profileRef = ref()
 const passwordRef = ref()
 const savingProfile = ref(false)
 const savingPassword = ref(false)
+
+const totalCredits = computed(
+  () => (account.profile?.free_credits || 0) + (account.profile?.purchased_credits || 0),
+)
 
 const localeOptions = [
   { value: 'zh-CN', label: '简体中文' },
@@ -102,6 +108,20 @@ async function submitPassword() {
 
 <template>
   <div class="account-page">
+    <el-card shadow="never" class="credit-card">
+      <div class="credit-info">
+        <div>
+          <span>{{ t('account.creditTitle') }}</span>
+          <b>{{ totalCredits }}</b>
+        </div>
+        <div class="credit-detail">
+          {{ t('account.freeCredits', { n: account.profile?.free_credits || 0 }) }} ·
+          {{ t('account.purchasedCredits', { n: account.profile?.purchased_credits || 0 }) }}
+        </div>
+      </div>
+      <el-button type="primary" @click="router.push('/billing')">{{ t('account.recharge') }}</el-button>
+    </el-card>
+
     <el-card shadow="never">
       <template #header><b>{{ t('account.profileTitle') }}</b></template>
       <el-form ref="profileRef" :model="profileForm" label-width="100px">
@@ -158,4 +178,27 @@ async function submitPassword() {
 
 <style scoped>
 .account-page { max-width: 720px; margin: 0 auto; }
+.credit-card { margin-bottom: 16px; }
+.credit-card :deep(.el-card__body) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.credit-info div:first-child span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--brand-muted);
+  font-size: 12px;
+}
+.credit-info div:first-child b {
+  font-size: 30px;
+  line-height: 1;
+  color: var(--brand-green-deep);
+}
+.credit-detail {
+  margin-top: 8px;
+  color: var(--brand-muted);
+  font-size: 12px;
+}
 </style>

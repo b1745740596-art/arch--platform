@@ -5,7 +5,10 @@ from .models import PasswordResetToken, UserProfile
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'display_name', 'phone', 'locale', 'email_verified', 'updated_at')
+    list_display = (
+        'user', 'display_name', 'phone', 'locale', 'email_verified',
+        'free_credits', 'purchased_credits', 'updated_at',
+    )
     list_filter = ('locale', 'email_verified')
     search_fields = ('user__username', 'user__email', 'display_name', 'phone')
     raw_id_fields = ('user',)

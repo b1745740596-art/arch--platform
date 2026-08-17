@@ -137,6 +137,29 @@ home_design_agent/
 示例数据：`python manage.py seed_demo`（家具 15、设计师 3、施工队 3）。
 家具带「适用空间」字段，生图时按空间过滤，详见「图生图」一节。
 
+## 支付与额度
+
+效果图生成为按次计费：每位用户一次性赠送 5 次免费额度（`PAYMENT_FREE_CREDITS`，默认 5），
+生成一次效果图消耗 1 次，免费额度用完后需购买套餐。充值套餐在
+`/admin/payments/pricingplan/` 维护，首次 `migrate` 会自动灌入「灵感包 / 进阶包 / 专业包」三档。
+
+- 用户侧：`/billing`（顶部导航「额度充值」）查看额度、购买套餐、查看充值记录；
+  账号设置页也会展示当前免费/已购额度
+- 管理侧：`/admin/payments`（顶部导航「营收看板」）展示营业额趋势、渠道占比与收款订单，
+  可手动确认待支付订单
+- 收款渠道：**Stripe**（国际信用卡）、**微信支付**（Native 扫码）、**支付宝**（当面付扫码）
+- 后端模块：`payments/`，模型为 `PricingPlan`（套餐）、`PaymentOrder`（收款订单）、
+  `CreditTransaction`（额度流水）；营业额与收款列表在
+  `/admin/payments/paymentorder/` 和 `GET /api/payments/admin/stats/`
+- 支付状态回调：`POST /api/payments/webhook/{stripe|wechat|alipay}/`
+
+本地默认 `PAYMENT_MODE=mock`，下单后点「模拟支付成功」即可入账，不发真实扣款。
+上线前在 `.env` 切到 `PAYMENT_MODE=live` 并配置对应渠道密钥（见 `.env.example`），
+依赖 `stripe` 与 `cryptography`（已在 `requirements.txt`）。
+
+生成额度扣减在 `design/views.py::RenderJobViewSet`，创建渲染任务与重新生成都会
+先预扣 1 次额度；若生图链路抛异常则原路退回，避免失败消耗用户额度。
+
 ## 上线部署
 
 生产形态：Docker Compose（nginx + gunicorn + PostgreSQL），完整步骤见

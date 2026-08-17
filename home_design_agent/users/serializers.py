@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
@@ -17,20 +18,28 @@ class UserProfileSerializer(serializers.ModelSerializer):
     is_staff = serializers.BooleanField(source='user.is_staff', read_only=True)
     is_superuser = serializers.BooleanField(source='user.is_superuser', read_only=True)
     roles = serializers.SerializerMethodField()
+    free_credits = serializers.IntegerField(read_only=True)
+    purchased_credits = serializers.IntegerField(read_only=True)
+    total_credits = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
         fields = (
             'id', 'username', 'email', 'display_name', 'phone', 'avatar',
             'bio', 'locale', 'timezone', 'email_verified',
+            'free_credits', 'purchased_credits', 'total_credits',
             'is_staff', 'is_superuser', 'roles', 'created_at', 'updated_at',
         )
         read_only_fields = (
-            'id', 'email_verified', 'created_at', 'updated_at',
+            'id', 'email_verified', 'free_credits', 'purchased_credits',
+            'created_at', 'updated_at',
         )
 
     def get_roles(self, obj):
         return list(obj.user.groups.values_list('name', flat=True))
+
+    def get_total_credits(self, obj):
+        return (obj.free_credits or 0) + (obj.purchased_credits or 0)
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
@@ -147,7 +156,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return data
 
     def _sync_profile(self, user, profile_data):
-        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile, _ = UserProfile.objects.get_or_create(
+            user=user,
+            defaults={'free_credits': getattr(settings, 'PAYMENT_FREE_CREDITS', 5)},
+        )
         changed = False
         for key, value in profile_data.items():
             if value is not None and getattr(profile, key) != value:

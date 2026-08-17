@@ -42,6 +42,7 @@ from .serializers import (
 from .imagegen import run_render_job
 from .prompts import option_payload, suggest_variants
 from .services import build_preview_schemes
+from payments.services import consume_generation_credit, refund_generation_credit
 
 
 @api_view(['GET'])
@@ -494,14 +495,35 @@ class RenderJobViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         module_codes = serializer.validated_data.pop('module_codes', '')
-        job = serializer.save()
-        # 同步生成（占位或真实）。生产可改为异步队列。
-        # module_codes 只是模块编码，真正的提示词由后端 prompt 控制模块提供。
-        run_render_job(job, module_codes)
+        deduction = consume_generation_credit(self.request.user)
+        job = None
+        try:
+            job = serializer.save()
+            # 同步生成（占位或真实）。生产可改为异步队列。
+            # module_codes 只是模块编码，真正的提示词由后端 prompt 控制模块提供。
+            run_render_job(job, module_codes)
+        except Exception:
+            refund_generation_credit(
+                self.request.user,
+                deduction['free_used'],
+                deduction['purchased_used'],
+            )
+            if job is not None:
+                job.delete()
+            raise
 
     @action(detail=True, methods=['post'])
     def regenerate(self, request, pk=None):
         job = self.get_object()
         module_codes = request.data.get('module_codes')
-        run_render_job(job, module_codes)
+        deduction = consume_generation_credit(request.user)
+        try:
+            run_render_job(job, module_codes)
+        except Exception:
+            refund_generation_credit(
+                request.user,
+                deduction['free_used'],
+                deduction['purchased_used'],
+            )
+            raise
         return Response(self.get_serializer(job).data)

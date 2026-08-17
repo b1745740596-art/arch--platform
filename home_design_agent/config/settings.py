@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'design',
     'users',
+    'payments',
 ]
 
 MIDDLEWARE = [
@@ -214,6 +215,35 @@ EMAIL_USE_TLS = env.bool('DJANGO_EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DJANGO_DEFAULT_FROM_EMAIL', default='noreply@example.com')
 PASSWORD_RESET_TIMEOUT_MINUTES = env.int('DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES', default=30)
 
+# ---- 支付与额度 ----
+# mock：本地联调，不发起真实扣款，前端可点击「模拟支付」完成入账；
+# live：按下方渠道配置发起真实收款。上线前请务必切换为 live 并配置密钥。
+PAYMENT_MODE = env('PAYMENT_MODE', default='mock')
+PAYMENT_FREE_CREDITS = env.int('PAYMENT_FREE_CREDITS', default=5)
+
+# Stripe（国际信用卡）。Stripe 与国内微信/支付宝共用一套套餐，
+# 若套餐为 CNY，会按 PAYMENT_STRIPE_EXCHANGE_RATE 折算为目标币种。
+PAYMENT_STRIPE_SECRET_KEY = env('PAYMENT_STRIPE_SECRET_KEY', default='')
+PAYMENT_STRIPE_PUBLIC_KEY = env('PAYMENT_STRIPE_PUBLIC_KEY', default='')
+PAYMENT_STRIPE_WEBHOOK_SECRET = env('PAYMENT_STRIPE_WEBHOOK_SECRET', default='')
+PAYMENT_STRIPE_CURRENCY = env('PAYMENT_STRIPE_CURRENCY', default='usd')
+PAYMENT_STRIPE_EXCHANGE_RATE = env.float('PAYMENT_STRIPE_EXCHANGE_RATE', default=0.14)
+
+# 微信支付（Native 扫码，v3）。密钥请使用 PEM 格式文本。
+PAYMENT_WECHAT_APP_ID = env('PAYMENT_WECHAT_APP_ID', default='')
+PAYMENT_WECHAT_MCH_ID = env('PAYMENT_WECHAT_MCH_ID', default='')
+PAYMENT_WECHAT_SERIAL_NO = env('PAYMENT_WECHAT_SERIAL_NO', default='')
+PAYMENT_WECHAT_PRIVATE_KEY = env('PAYMENT_WECHAT_PRIVATE_KEY', default='')
+PAYMENT_WECHAT_API_V3_KEY = env('PAYMENT_WECHAT_API_V3_KEY', default='')
+PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY = env('PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY', default='')
+PAYMENT_WECHAT_NOTIFY_URL = env('PAYMENT_WECHAT_NOTIFY_URL', default='')
+
+# 支付宝（当面付/扫码）。密钥请使用 PEM 格式文本。
+PAYMENT_ALIPAY_APP_ID = env('PAYMENT_ALIPAY_APP_ID', default='')
+PAYMENT_ALIPAY_PRIVATE_KEY = env('PAYMENT_ALIPAY_PRIVATE_KEY', default='')
+PAYMENT_ALIPAY_PUBLIC_KEY = env('PAYMENT_ALIPAY_PUBLIC_KEY', default='')
+PAYMENT_ALIPAY_NOTIFY_URL = env('PAYMENT_ALIPAY_NOTIFY_URL', default='')
+
 # 可浏览 API 页面只在开发环境暴露
 if DEBUG:
     REST_FRAMEWORK['DEFAULT_RENDERER_CLASSES'].append(
@@ -270,7 +300,7 @@ SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
 # 自定义左侧菜单，按 PRD 功能域组织
 SIMPLEUI_CONFIG = {
     'system_keep': True,
-    'menu_display': ['Arch_AI Platform', '工作流', '用户管理'],
+    'menu_display': ['Arch_AI Platform', '工作流', '用户管理', '支付管理'],
     'dynamic': False,
     'menus': [
         {
@@ -305,6 +335,15 @@ SIMPLEUI_CONFIG = {
                 {'name': '用户组', 'icon': 'fas fa-users', 'url': '/admin/auth/group/'},
                 {'name': '用户资料', 'icon': 'fas fa-id-card', 'url': '/admin/users/userprofile/'},
                 {'name': '重置令牌', 'icon': 'fas fa-key', 'url': '/admin/users/passwordresettoken/'},
+            ],
+        },
+        {
+            'name': '支付管理',
+            'icon': 'fas fa-wallet',
+            'models': [
+                {'name': '充值套餐', 'icon': 'fas fa-tags', 'url': '/admin/payments/pricingplan/'},
+                {'name': '收款订单', 'icon': 'fas fa-file-invoice-dollar', 'url': '/admin/payments/paymentorder/'},
+                {'name': '额度流水', 'icon': 'fas fa-exchange-alt', 'url': '/admin/payments/credittransaction/'},
             ],
         },
     ],

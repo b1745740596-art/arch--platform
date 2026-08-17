@@ -34,6 +34,7 @@ COPY manage.py ./
 COPY config/ ./config/
 COPY design/ ./design/
 COPY users/ ./users/
+COPY payments/ ./payments/
 COPY deploy/ ./deploy/
 
 # 前端构建产物（Django 通过 STATICFILES_DIRS 挂到 /static/spa/，模板读 index.html）

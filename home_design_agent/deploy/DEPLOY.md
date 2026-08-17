@@ -55,6 +55,23 @@ curl -fsS http://<域名或IP>/api/design/health/
 | `DJANGO_SERVE_MEDIA` | — | 有 nginx 时 `false`；单容器直跑时 `true` |
 | `SEED_ON_START` | — | 首次 `1`，之后 `0` |
 | `GUNICORN_TIMEOUT` | — | 默认 600，必须 > 前端 360s |
+| `PAYMENT_MODE` | 是 | 生产必须 `live`；`mock` 只用于本地联调 |
+| `PAYMENT_FREE_CREDITS` | — | 每用户一次性免费生成次数，默认 5 |
+| `PAYMENT_STRIPE_SECRET_KEY` / `PAYMENT_STRIPE_PUBLIC_KEY` / `PAYMENT_STRIPE_WEBHOOK_SECRET` | 用 Stripe 时必填 | Stripe 密钥与 webhook 验签密钥 |
+| `PAYMENT_WECHAT_*` | 用微信支付时必填 | AppID / 商户号 / 证书序列号 / 商户私钥 / API v3 密钥 / 平台公钥 / 回调地址 |
+| `PAYMENT_ALIPAY_*` | 用支付宝时必填 | AppID / 应用私钥 / 支付宝公钥 / 回调地址 |
+
+## 三.1 支付上线配置（务必阅读）
+
+1. 复制 `.env.example` 后，把 `PAYMENT_MODE` 改为 `live`，并按实际开通的渠道填入密钥。
+2. 渠道回调地址必须配置为公网 HTTPS 地址，并指向本服务：
+   - Stripe：`https://你的域名/api/payments/webhook/stripe/`
+   - 微信支付：`https://你的域名/api/payments/webhook/wechat/`
+   - 支付宝：`https://你的域名/api/payments/webhook/alipay/`
+3. 密钥是敏感数据，只放在服务器 `.env`（已被 `.gitignore` 排除），不要写进仓库或前端。
+4. 上线后用真实账号完成一次最小金额充值，验证「支付 → 回调 → 额度到账 → 营收看板」全链路。
+5. 微信/支付宝需要商户号与证书，请先在企业后台开通并下载；PEM 私钥需要含
+   `-----BEGIN ... PRIVATE KEY-----` 完整文本，多行值在 `.env` 中用引号包裹或换行转义。
 
 ## 四、配 HTTPS
 

@@ -62,6 +62,32 @@ usersClient.interceptors.response.use(
   (err) => Promise.reject(err),
 )
 
+// 支付与额度独立实例：/api/payments
+const paymentsClient = axios.create({
+  baseURL: '/api/payments',
+  timeout: 60000,
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
+  withCredentials: true,
+})
+
+paymentsClient.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toLowerCase()
+  if (!['get', 'head', 'options', 'trace'].includes(method)) {
+    const token = readCookie('csrftoken')
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers['X-CSRFToken'] = token
+    }
+  }
+  return config
+})
+
+paymentsClient.interceptors.response.use(
+  (res) => res.data,
+  (err) => Promise.reject(err),
+)
+
 export const api = {
   health: () => client.get('/health/'),
   // 项目
@@ -123,6 +149,17 @@ export const api = {
   createAdminUser: (data) => usersClient.post('/admin/users/', data),
   updateAdminUser: (id, data) => usersClient.patch(`/admin/users/${id}/`, data),
   deleteAdminUser: (id) => usersClient.delete(`/admin/users/${id}/`),
+  // 支付与额度
+  listPlans: () => paymentsClient.get('/plans/'),
+  getBalance: () => paymentsClient.get('/balance/'),
+  listTransactions: () => paymentsClient.get('/transactions/'),
+  createPaymentOrder: (data) => paymentsClient.post('/orders/', data),
+  listPaymentOrders: () => paymentsClient.get('/orders/'),
+  getPaymentOrder: (id) => paymentsClient.get(`/orders/${id}/`),
+  mockPayOrder: (id) => paymentsClient.post(`/orders/${id}/mock_pay/`),
+  listAdminPaymentOrders: (params) => paymentsClient.get('/admin/orders/', { params }),
+  getAdminPaymentStats: () => paymentsClient.get('/admin/stats/'),
+  adminMarkPaid: (id, data) => paymentsClient.post(`/admin/orders/${id}/mark-paid/`, data),
 }
 
 export default client

@@ -17,8 +17,12 @@ const navItems = computed(() => {
     { path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' },
     { path: '/intake', key: 'nav.intake', icon: 'UploadFilled' },
   ]
+  if (auth.user) {
+    items.push({ path: '/billing', key: 'nav.billing', icon: 'Wallet' })
+  }
   if (auth.user?.is_staff || auth.user?.is_superuser) {
     items.push({ path: '/admin/users', key: 'nav.adminUsers', icon: 'UserFilled' })
+    items.push({ path: '/admin/payments', key: 'nav.adminPayments', icon: 'TrendCharts' })
   }
   return items
 })
@@ -110,11 +114,18 @@ onMounted(() => {
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
+                    <el-dropdown-item @click="router.push('/billing')">{{ t('nav.billing') }}</el-dropdown-item>
                     <el-dropdown-item
                       v-if="auth.user.is_staff || auth.user.is_superuser"
                       @click="router.push('/admin/users')"
                     >
                       {{ t('nav.adminUsers') }}
+                    </el-dropdown-item>
+                    <el-dropdown-item
+                      v-if="auth.user.is_staff || auth.user.is_superuser"
+                      @click="router.push('/admin/payments')"
+                    >
+                      {{ t('nav.adminPayments') }}
                     </el-dropdown-item>
                     <el-dropdown-item divided @click="doLogout">{{ t('auth.logout') }}</el-dropdown-item>
                   </el-dropdown-menu>

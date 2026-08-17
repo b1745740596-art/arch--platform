@@ -28,6 +28,14 @@ class UserProfile(models.Model):
     )
     timezone = models.CharField('时区', max_length=50, default='Asia/Shanghai')
     email_verified = models.BooleanField('邮箱已验证', default=False)
+    free_credits = models.PositiveIntegerField(
+        '免费生成额度', default=5,
+        help_text='每位用户一次性赠送的免费生成次数，消耗完毕后开始使用充值额度',
+    )
+    purchased_credits = models.PositiveIntegerField(
+        '充值生成额度', default=0,
+        help_text='通过支付套餐购买的生成次数',
+    )
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 

@@ -28,9 +28,16 @@ from django.views.static import serve as static_serve
 spa_view = ensure_csrf_cookie(TemplateView.as_view(template_name='index.html'))
 
 urlpatterns = [
+    # 前端管理员页面：显式交由 Vue Router 处理，避免被 Django admin 前缀抢先匹配。
+    # 仅覆盖已知 SPA 页面，/admin/ 本身与其余后台路径仍走 Django admin。
+    path('admin/users', spa_view, name='admin-users-spa'),
+    path('admin/users/', spa_view),
+    path('admin/payments', spa_view, name='admin-payments-spa'),
+    path('admin/payments/', spa_view),
     path('admin/', admin.site.urls),
     path('api/design/', include('design.urls')),
     path('api/users/', include('users.urls')),
+    path('api/payments/', include('payments.urls')),
     # 前端首页
     path('', spa_view, name='spa'),
     # 客户端路由回落：非 admin/api/static/media 的路径都交给 Vue Router

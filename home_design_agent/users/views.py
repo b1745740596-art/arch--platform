@@ -25,7 +25,10 @@ User = get_user_model()
 
 
 def _get_or_create_profile(user):
-    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile, _ = UserProfile.objects.get_or_create(
+        user=user,
+        defaults={'free_credits': getattr(settings, 'PAYMENT_FREE_CREDITS', 5)},
+    )
     return profile
 
 
