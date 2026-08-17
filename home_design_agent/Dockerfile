@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY manage.py ./
 COPY config/ ./config/
 COPY design/ ./design/
+COPY users/ ./users/
 COPY deploy/ ./deploy/
 
 # 前端构建产物（Django 通过 STATICFILES_DIRS 挂到 /static/spa/，模板读 index.html）
