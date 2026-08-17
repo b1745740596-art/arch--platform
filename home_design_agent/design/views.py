@@ -15,6 +15,7 @@ from .models import (
     HomeOrder,
     HomeReport,
     Lead,
+    OrderDetail,
     Owner,
     Project,
     RenderWorkflow,
@@ -295,6 +296,7 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
             amount_max=amount_max,
             total_amount=total_amount,
         )
+        OrderDetail.sync_from_order(order)
 
         if report:
             report.status = HomeReport.Status.ORDERED

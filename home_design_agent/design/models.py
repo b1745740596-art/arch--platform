@@ -589,3 +589,113 @@ class HomeOrder(TimestampedModel):
         if not self.order_no:
             self.order_no = self._generate_order_no()
         super().save(*args, **kwargs)
+
+
+class OrderDetail(TimestampedModel):
+    """订单详情：把前端「我的家」报告同步为后台可直接查看的客户资料。
+
+    一条订单对应一份详情，记录客户意向图、家装建议、家具清单、设计师与
+    服务商推荐等结构化信息。详情由下单流程自动同步，也可在后台手动补录。
+    """
+
+    order = models.OneToOneField(
+        HomeOrder, on_delete=models.CASCADE, related_name='detail', verbose_name='订单',
+    )
+    intention_images = models.JSONField(
+        '意向图汇总', default=list, blank=True,
+        help_text='客户上传图片与 AI 生成图片的合并列表，便于快速浏览',
+    )
+    customer_images = models.JSONField(
+        '客户上传图片', default=list, blank=True,
+        help_text='户型图、客户上传的原始照片等图片 URL 列表',
+    )
+    generated_images = models.JSONField(
+        'AI 生成图片', default=list, blank=True,
+        help_text='效果图生成任务产出的图片 URL 列表',
+    )
+    design_advice = models.TextField('家装建议', blank=True)
+    furniture_snapshot = models.JSONField(
+        '家具清单', default=list, blank=True,
+        help_text='同步自前端报告或订单明细，如 [{name, category, price, quantity, buy_url, image_url}]',
+    )
+    designer_snapshot = models.JSONField('设计师', default=dict, blank=True)
+    contractor_snapshot = models.JSONField('装修队/服务商', default=dict, blank=True)
+    report_snapshot = models.JSONField('前端报告快照', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '订单详情'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'订单详情#{self.pk}（{self.order_id}）'
+
+    @classmethod
+    def sync_from_order(cls, order):
+        """从订单及其关联报告/生成任务同步详情，幂等写入一份 OrderDetail。"""
+        report = order.report
+        render_job = report.render_job if report else None
+        project = order.project
+        data = report.report if report else {}
+        payload = order.payload if isinstance(order.payload, dict) else {}
+        merged = {**data, **payload}
+
+        customer_images = []
+        if project and project.floorplan and getattr(project.floorplan, 'name', ''):
+            customer_images.append(project.floorplan.url)
+        if render_job and render_job.raw_photo and getattr(render_job.raw_photo, 'name', ''):
+            customer_images.append(render_job.raw_photo.url)
+        for url in merged.get('customer_images') or merged.get('reference_images') or []:
+            if url and url not in customer_images:
+                customer_images.append(url)
+
+        generated_images = []
+        if render_job and render_job.result_image and getattr(render_job.result_image, 'name', ''):
+            generated_images.append(render_job.result_image.url)
+        if render_job and render_job.result_image_url:
+            generated_images.append(render_job.result_image_url)
+        for key in ('generated_images', 'result_urls'):
+            for url in merged.get(key) or []:
+                if url and url not in generated_images:
+                    generated_images.append(url)
+        for key in ('result_url', 'result_image_url'):
+            url = merged.get(key)
+            if url and url not in generated_images:
+                generated_images.append(url)
+
+        intention_images = []
+        for url in customer_images + generated_images:
+            if url and url not in intention_images:
+                intention_images.append(url)
+        for url in merged.get('intention_images') or []:
+            if url and url not in intention_images:
+                intention_images.append(url)
+
+        advice_parts = []
+        design_note = merged.get('design_note') or (render_job.design_note if render_job else '')
+        if design_note:
+            advice_parts.append(design_note.strip())
+        budget_advice = merged.get('budget_advice')
+        if budget_advice:
+            advice_parts.append(budget_advice.strip())
+        renovation_advice = merged.get('renovation_advice')
+        if renovation_advice:
+            advice_parts.append(renovation_advice.strip())
+
+        furniture_snapshot = merged.get('furnitures') or order.items or []
+        designer_snapshot = merged.get('designer') or {}
+        contractor_snapshot = merged.get('contractor') or {}
+
+        detail, _ = cls.objects.update_or_create(
+            order=order,
+            defaults={
+                'intention_images': intention_images,
+                'customer_images': customer_images,
+                'generated_images': generated_images,
+                'design_advice': '\n\n'.join(advice_parts),
+                'furniture_snapshot': furniture_snapshot,
+                'designer_snapshot': designer_snapshot,
+                'contractor_snapshot': contractor_snapshot,
+                'report_snapshot': merged,
+            },
+        )
+        return detail

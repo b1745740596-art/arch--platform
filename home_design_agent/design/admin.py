@@ -1,6 +1,8 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.urls import reverse
+from django.utils.html import format_html, format_html_join, mark_safe
 
 from .models import (
     CustomerRequirement,
@@ -11,6 +13,7 @@ from .models import (
     HomeOrder,
     HomeReport,
     Lead,
+    OrderDetail,
     Owner,
     Project,
     PromptModule,
@@ -254,6 +257,7 @@ class HomeOrderAdmin(admin.ModelAdmin):
         'user__username', 'project__title',
     )
     readonly_fields = ('order_no', 'payload', 'created_at', 'updated_at')
+    actions = ('sync_order_details',)
     fieldsets = (
         ('客户信息', {'fields': ('customer_name', 'customer_phone', 'user')}),
         ('关联项目', {'fields': ('project', 'report', 'title')}),
@@ -261,3 +265,203 @@ class HomeOrderAdmin(admin.ModelAdmin):
         ('订单明细', {'fields': ('items', 'remark', 'payload')}),
         ('状态', {'fields': ('status', 'order_no')}),
     )
+
+    @admin.action(description='同步选中订单的「订单详情」')
+    def sync_order_details(self, request, queryset):
+        for order in queryset:
+            OrderDetail.sync_from_order(order)
+        self.message_user(request, f'已同步 {queryset.count()} 条订单详情。')
+
+
+@admin.register(OrderDetail)
+class OrderDetailAdmin(admin.ModelAdmin):
+    list_display = (
+        'order_link', 'customer_name', 'customer_phone', 'project_title',
+        'customer_image_count', 'generated_image_count', 'furniture_count',
+        'designer_name', 'contractor_name', 'created_at',
+    )
+    list_filter = ('created_at', 'order__status')
+    search_fields = (
+        'order__order_no', 'order__customer_name', 'order__customer_phone',
+        'order__project__title', 'order__report__title',
+    )
+    readonly_fields = (
+        'order', 'customer_summary', 'customer_images_preview',
+        'generated_images_preview', 'furniture_selection',
+        'designer_summary', 'contractor_summary', 'created_at', 'updated_at',
+    )
+    fieldsets = (
+        ('订单信息', {
+            'fields': ('order', 'customer_summary', 'created_at', 'updated_at'),
+        }),
+        ('客户上传图片', {
+            'fields': ('customer_images_preview', 'customer_images'),
+            'description': '下单时自动同步户型图与客户上传的原始照片。',
+        }),
+        ('AI 生成图片', {
+            'fields': ('generated_images_preview', 'generated_images'),
+            'description': '下单时自动同步效果图任务生成的效果图。',
+        }),
+        ('家装建议', {'fields': ('design_advice',)}),
+        ('家具选择', {
+            'fields': ('furniture_selection', 'furniture_snapshot'),
+            'description': '自动同步家具清单、价格、数量与购买链接。',
+        }),
+        ('设计师', {
+            'fields': ('designer_summary', 'designer_snapshot'),
+        }),
+        ('装修队 / 服务商', {
+            'fields': ('contractor_summary', 'contractor_snapshot'),
+        }),
+        ('前端报告快照', {'fields': ('report_snapshot',)}),
+    )
+
+    def _image_preview(self, images):
+        images = [url for url in (images or []) if url]
+        if not images:
+            return '暂无图片'
+        return format_html_join(
+            '',
+            '<div style="display:inline-block;margin:4px;vertical-align:top">'
+            '<img src="{}" style="max-height:150px;max-width:240px;border-radius:6px" />'
+            '<div style="font-size:11px;color:#888;word-break:break-all;max-width:240px">{}</div></div>',
+            ((url, url) for url in images),
+        )
+
+    @admin.display(description='订单', ordering='order__order_no')
+    def order_link(self, obj):
+        url = reverse('admin:design_homeorder_change', args=[obj.order_id])
+        return format_html('<a href="{}">{}</a>', url, obj.order.order_no or f'#{obj.order_id}')
+
+    @admin.display(description='客户', ordering='order__customer_name')
+    def customer_name(self, obj):
+        return obj.order.customer_name or '-'
+
+    @admin.display(description='电话', ordering='order__customer_phone')
+    def customer_phone(self, obj):
+        return obj.order.customer_phone or '-'
+
+    @admin.display(description='项目', ordering='order__project__title')
+    def project_title(self, obj):
+        return obj.order.project.title if obj.order.project else '-'
+
+    @admin.display(description='上传图数')
+    def customer_image_count(self, obj):
+        return len(obj.customer_images or [])
+
+    @admin.display(description='生成图数')
+    def generated_image_count(self, obj):
+        return len(obj.generated_images or [])
+
+    @admin.display(description='家具数')
+    def furniture_count(self, obj):
+        return len(obj.furniture_snapshot or [])
+
+    @admin.display(description='设计师')
+    def designer_name(self, obj):
+        designer = obj.designer_snapshot or {}
+        return designer.get('name') or '-'
+
+    @admin.display(description='装修队')
+    def contractor_name(self, obj):
+        contractor = obj.contractor_snapshot or {}
+        return contractor.get('name') or '-'
+
+    @admin.display(description='客户摘要')
+    def customer_summary(self, obj):
+        order = obj.order
+        designer = obj.designer_snapshot or {}
+        parts = [
+            f'客户：{order.customer_name or "-"}',
+            f'电话：{order.customer_phone or "-"}',
+            f'订单号：{order.order_no or "-"}',
+            f'状态：{order.get_status_display()}',
+            f'总价：¥{order.total_amount:,}' if order.total_amount else '总价：未填写',
+            f'设计师：{designer.get("name") or "-"}',
+        ]
+        return format_html('<br>'.join('{}' for _ in parts), *parts)
+
+    @admin.display(description='客户上传图片预览')
+    def customer_images_preview(self, obj):
+        return self._image_preview(obj.customer_images)
+
+    @admin.display(description='AI 生成图片预览')
+    def generated_images_preview(self, obj):
+        return self._image_preview(obj.generated_images)
+
+    @admin.display(description='家具选择预览')
+    def furniture_selection(self, obj):
+        items = obj.furniture_snapshot or []
+        if not items:
+            return '暂无家具'
+        rows = []
+        for item in items:
+            name = item.get('name') or item.get('title') or '未命名'
+            brand = item.get('brand') or ''
+            category = item.get('category_display') or item.get('category') or ''
+            price = item.get('price')
+            quantity = item.get('quantity') or 1
+            buy_url = item.get('buy_url')
+            image_url = item.get('image_url')
+
+            meta = ' · '.join(part for part in (brand, category) if part)
+            meta_html = (
+                format_html('<div style="color:#888;font-size:12px">{}</div>', meta)
+                if meta
+                else ''
+            )
+            price_text = f'¥{int(price):,}' if price is not None else '价格未填写'
+            image_html = (
+                format_html(
+                    '<img src="{}" style="width:56px;height:56px;object-fit:cover;'
+                    'border-radius:6px;margin-right:10px">',
+                    image_url,
+                )
+                if image_url
+                else ''
+            )
+            link_html = (
+                format_html(
+                    '<div style="font-size:12px;color:#0d6efd;word-break:break-all">'
+                    '<a href="{}" target="_blank">{}</a></div>',
+                    buy_url, buy_url,
+                )
+                if buy_url
+                else format_html('<div style="font-size:12px;color:#999">暂无购买链接</div>')
+            )
+            rows.append(
+                format_html(
+                    '<div style="display:flex;align-items:center;padding:6px 0;'
+                    'border-bottom:1px solid #eee">{}{}<div>'
+                    '<b>{}</b>{}<div style="font-size:12px;color:#666">{} × {}</div>{}</div></div>',
+                    image_html, name, meta_html, price_text, quantity, link_html,
+                )
+            )
+        return format_html('<div style="margin-top:4px">{}</div>', mark_safe(''.join(rows)))
+
+    @admin.display(description='设计师预览')
+    def designer_summary(self, obj):
+        designer = obj.designer_snapshot or {}
+        if not designer:
+            return '暂无设计师'
+        parts = [
+            f'{designer.get("name") or "-"} · {designer.get("title") or "-"}',
+            f'城市：{designer.get("city") or "-"} · 从业 {designer.get("years") or 0} 年',
+            f'擅长：{"、".join(designer.get("styles") or []) or "-"}',
+            f'简介：{designer.get("intro") or "-"}',
+        ]
+        return format_html('<br>'.join('{}' for _ in parts), *parts)
+
+    @admin.display(description='装修队/服务商预览')
+    def contractor_summary(self, obj):
+        contractor = obj.contractor_snapshot or {}
+        if not contractor:
+            return '暂无装修队/服务商'
+        kind = contractor.get('kind_display') or contractor.get('kind') or '-'
+        parts = [
+            f'{contractor.get("name") or "-"} · {kind}',
+            f'城市：{contractor.get("city") or "-"}',
+            f'报价区间：{contractor.get("quote_range") or "-"}',
+            f'响应速度：{contractor.get("response_speed") or "-"}',
+        ]
+        return format_html('<br>'.join('{}' for _ in parts), *parts)

@@ -270,6 +270,7 @@ SIMPLEUI_CONFIG = {
                 {'name': '设计师', 'icon': 'fas fa-user-pen', 'url': '/admin/design/designer/'},
                 {'name': '服务商/施工队', 'icon': 'fas fa-store', 'url': '/admin/design/serviceprovider/'},
                 {'name': '线索留资', 'icon': 'fas fa-address-book', 'url': '/admin/design/lead/'},
+                {'name': '订单详情', 'icon': 'fas fa-file-invoice', 'url': '/admin/design/orderdetail/'},
                 {'name': '生成配置(API)', 'icon': 'fas fa-key', 'url': '/admin/design/generationconfig/'},
             ],
         },
