@@ -225,6 +225,7 @@ onBeforeUnmount(() => {
         <el-table-column :label="t('adminPayments.amount')" width="110">
           <template #default="{ row }">¥{{ Number(row.amount || 0).toFixed(2) }}</template>
         </el-table-column>
+        <el-table-column prop="payment_note" :label="t('adminPayments.paymentNote')" min-width="140" show-overflow-tooltip />
         <el-table-column :label="t('adminPayments.status')" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" effect="light">{{ row.status_display }}</el-tag>

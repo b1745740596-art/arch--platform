@@ -6,6 +6,8 @@ import { ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
 import { useBillingStore } from '@/stores/billing'
 import { useAuthStore } from '@/stores/auth'
+import wechatQr from '@/assets/pay_qr_wechat.webp'
+import alipayQr from '@/assets/pay_qr_alipay.webp'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -25,11 +27,18 @@ const paying = ref(false)
 const currentOrder = ref(null)
 const currentPayment = ref(null)
 const qrDataUrl = ref('')
+const proofNote = ref('')
+const submittingProof = ref(false)
 
 const isMockMode = computed(() => billing.balance?.payment_mode !== 'live')
+const qrMode = computed(() => billing.balance?.payment_qr_mode === true)
+const visibleProviders = computed(() => (qrMode.value ? providers.filter((p) => p.value !== 'stripe') : providers))
+const proofDone = computed(() => !!currentOrder.value?.payment_note)
 const totalCredits = computed(() => billing.balance?.total_credits ?? 0)
 const freeCredits = computed(() => billing.balance?.free_credits ?? 0)
 const purchasedCredits = computed(() => billing.balance?.purchased_credits ?? 0)
+
+const staticQrImage = (provider) => (provider === 'alipay' ? alipayQr : wechatQr)
 
 const currencySymbol = (currency) => (currency === 'USD' ? '$' : '¥')
 const formatAmount = (order) => `${currencySymbol(order?.currency)}${(order?.amount ?? 0).toFixed(2)}`
@@ -50,6 +59,7 @@ function openPay(plan) {
   currentOrder.value = null
   currentPayment.value = null
   qrDataUrl.value = ''
+  proofNote.value = ''
   dialogVisible.value = true
 }
 
@@ -86,6 +96,20 @@ async function mockPay() {
     dialogVisible.value = false
   } catch (e) {
     ElMessage.error(t('common.actionFailed', { msg: extractError(e) }))
+  }
+}
+
+async function submitProof() {
+  if (!currentOrder.value || !proofNote.value.trim()) return
+  submittingProof.value = true
+  try {
+    const result = await billing.submitProof(currentOrder.value.id, { payment_note: proofNote.value.trim() })
+    currentOrder.value = result
+    ElMessage.success(t('billing.proofSubmitted'))
+  } catch (e) {
+    ElMessage.error(t('common.actionFailed', { msg: extractError(e) }))
+  } finally {
+    submittingProof.value = false
   }
 }
 
@@ -173,7 +197,7 @@ const statusType = (status) => ({ paid: 'success', pending: 'warning', failed: '
           <p class="pay-label">{{ t('billing.chooseProvider') }}</p>
           <div class="provider-list">
             <button
-              v-for="p in providers"
+              v-for="p in visibleProviders"
               :key="p.value"
               type="button"
               class="provider-btn"
@@ -190,7 +214,39 @@ const statusType = (status) => ({ paid: 'success', pending: 'warning', failed: '
 
         <template v-else>
           <div class="order-line">{{ t('billing.orderNo') }}：{{ currentOrder.order_no }}</div>
-          <template v-if="qrDataUrl">
+          <template v-if="currentPayment?.static_qr">
+            <p class="pay-label">{{ t('billing.staticQrHint') }}</p>
+            <img :src="staticQrImage(currentOrder.provider)" class="static-qr" alt="payment QR" />
+            <div class="pay-amount">{{ formatAmount(currentOrder) }}</div>
+            <template v-if="!proofDone">
+              <el-input
+                v-model="proofNote"
+                type="textarea"
+                :rows="2"
+                maxlength="200"
+                show-word-limit
+                :placeholder="t('billing.proofPlaceholder')"
+              />
+              <el-button
+                type="success"
+                class="pay-submit"
+                :loading="submittingProof"
+                :disabled="!proofNote.trim()"
+                @click="submitProof"
+              >
+                {{ t('billing.submitProof') }}
+              </el-button>
+              <p class="pay-note-tip">{{ t('billing.proofTip') }}</p>
+            </template>
+            <el-alert
+              v-else
+              type="success"
+              :title="t('billing.proofSubmitted')"
+              :description="t('billing.proofWaiting')"
+              show-icon
+            />
+          </template>
+          <template v-else-if="qrDataUrl">
             <p class="pay-label">{{ t('billing.scanToPay', { provider: providers.find((p) => p.value === currentOrder.provider)?.label }) }}</p>
             <img :src="qrDataUrl" class="qr" alt="QR code" />
           </template>
@@ -265,6 +321,9 @@ h2 { margin: 0; font-size: 20px; }
 .pay-submit { width: 100%; margin-top: 18px; }
 .order-line { padding: 12px 0 4px; font-size: 13px; color: var(--brand-muted); }
 .qr { display: block; margin: 6px auto 0; width: 224px; height: 224px; border-radius: 8px; }
+.static-qr { display: block; margin: 6px auto 0; width: 100%; max-width: 280px; height: auto; max-height: 320px; object-fit: contain; border-radius: 8px; }
+.pay-amount { margin: 12px 0 4px; text-align: center; font-size: 20px; font-weight: 800; color: var(--brand-green-deep); }
+.pay-note-tip { margin: 8px 0 0; font-size: 12px; color: var(--brand-muted); }
 @media (max-width: 720px) {
   .balance-card { flex-direction: column; align-items: flex-start; gap: 18px; }
   .balance-meta { width: 100%; justify-content: flex-start; }

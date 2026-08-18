@@ -53,6 +53,7 @@ def balance_for_user(user):
         'purchased_credits': profile.purchased_credits,
         'total_credits': profile.free_credits + profile.purchased_credits,
         'payment_mode': settings.PAYMENT_MODE,
+        'payment_qr_mode': settings.PAYMENT_QR_MODE,
     }
 
 
@@ -271,6 +272,7 @@ def get_payment_diagnostics(request=None):
 
     return {
         'payment_mode': settings.PAYMENT_MODE,
+        'payment_qr_mode': settings.PAYMENT_QR_MODE,
         'free_credits': settings.PAYMENT_FREE_CREDITS,
         'plans_count': PricingPlan.objects.filter(is_active=True).count(),
         'webhook_urls': {

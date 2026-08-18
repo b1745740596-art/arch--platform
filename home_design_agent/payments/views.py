@@ -107,6 +107,21 @@ class PaymentOrderViewSet(viewsets.GenericViewSet):
             'balance': balance_for_user(request.user),
         })
 
+    @action(detail=True, methods=['post'])
+    def submit_proof(self, request, pk=None):
+        """静态收款码模式：用户提交支付流水/联系方式，等待后台人工确认。"""
+        order = self.get_object()
+        if order.status != PaymentOrder.Status.PENDING:
+            raise ValidationError('当前订单状态不能提交支付凭证。')
+        note = (request.data.get('payment_note') or request.data.get('note') or '').strip()
+        if not note:
+            raise ValidationError('请填写支付流水号或联系方式。')
+        if len(note) > 200:
+            raise ValidationError('支付备注不能超过 200 个字符。')
+        order.payment_note = note
+        order.save(update_fields=['payment_note', 'updated_at'])
+        return Response(self.get_serializer(order).data)
+
 
 class AdminOrderListView(APIView):
     """收款列表：后台查看全部支付订单，可按状态/渠道筛选。"""

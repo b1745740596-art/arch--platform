@@ -220,6 +220,9 @@ PASSWORD_RESET_TIMEOUT_MINUTES = env.int('DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES'
 # live：按下方渠道配置发起真实收款。上线前请务必切换为 live 并配置密钥。
 PAYMENT_MODE = env('PAYMENT_MODE', default='mock')
 PAYMENT_FREE_CREDITS = env.int('PAYMENT_FREE_CREDITS', default=5)
+# 静态收款码模式：没有支付 API 时使用。下单后展示微信/支付宝收款码，
+# 用户扫码付款后由后台人工确认入账；不发起渠道 API 调用。
+PAYMENT_QR_MODE = env.bool('PAYMENT_QR_MODE', default=False)
 
 # Stripe（国际信用卡）。Stripe 与国内微信/支付宝共用一套套餐，
 # 若套餐为 CNY，会按 PAYMENT_STRIPE_EXCHANGE_RATE 折算为目标币种。

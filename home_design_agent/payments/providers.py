@@ -85,6 +85,24 @@ class MockProvider(BaseProvider):
         }
 
 
+class StaticQrProvider(BaseProvider):
+    """静态收款码渠道：不调用支付 API，展示收款码后由后台人工确认入账。"""
+
+    name = 'static_qr'
+
+    def create_payment(self, order, request):
+        return {
+            'static_qr': True,
+            'provider': order.provider,
+            'reference': order.order_no,
+            'amount': order.amount_cents / 100,
+            'currency': order.currency,
+        }
+
+    def webhook(self, request):
+        return None, False, None, {}
+
+
 class StripeProvider(BaseProvider):
     name = 'stripe'
 
@@ -335,7 +353,9 @@ PROVIDERS = {
 
 
 def get_provider(name: str):
-    """根据渠道名取 provider；mock 模式强制走 MockProvider。"""
+    """根据渠道名取 provider；mock 模式强制走 MockProvider，二维码模式走静态收款码。"""
+    if _setting('PAYMENT_QR_MODE', False):
+        return StaticQrProvider()
     if _setting('PAYMENT_MODE', 'mock') != 'live':
         return MockProvider()
     provider_cls = PROVIDERS.get(name)

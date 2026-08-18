@@ -15,10 +15,10 @@ class PricingPlanAdmin(admin.ModelAdmin):
 class PaymentOrderAdmin(admin.ModelAdmin):
     list_display = (
         'order_no', 'user', 'plan', 'provider', 'status',
-        'amount', 'currency', 'credits', 'paid_at', 'created_at',
+        'amount', 'currency', 'credits', 'payment_note', 'paid_at', 'created_at',
     )
     list_filter = ('provider', 'status', 'currency')
-    search_fields = ('order_no', 'user__username', 'user__email', 'provider_reference')
+    search_fields = ('order_no', 'user__username', 'user__email', 'provider_reference', 'payment_note')
     readonly_fields = ('order_no', 'provider_response', 'paid_at', 'created_at', 'updated_at')
     raw_id_fields = ('user', 'plan')
 

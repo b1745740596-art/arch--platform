@@ -76,6 +76,10 @@ class PaymentOrder(models.Model):
         '渠道交易号', max_length=120, blank=True, db_index=True,
         help_text='如 Stripe Session ID / 微信 out_trade_no / 支付宝 trade_no',
     )
+    payment_note = models.CharField(
+        '支付备注', max_length=200, blank=True,
+        help_text='静态收款码模式下，用户填写的支付流水/联系方式，供后台人工核对',
+    )
     provider_response = models.JSONField('渠道响应', default=dict, blank=True)
     paid_at = models.DateTimeField('支付时间', null=True, blank=True)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)

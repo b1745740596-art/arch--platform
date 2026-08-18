@@ -14,6 +14,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         data = get_payment_diagnostics()
         self.stdout.write(f"PAYMENT_MODE       : {data['payment_mode']}")
+        self.stdout.write(f"PAYMENT_QR_MODE    : {data.get('payment_qr_mode', False)}")
         self.stdout.write(f"FREE_CREDITS       : {data['free_credits']}")
         self.stdout.write(f"ACTIVE_PLANS       : {data['plans_count']}")
         self.stdout.write('')

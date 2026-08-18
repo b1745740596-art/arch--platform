@@ -157,6 +157,7 @@ export const api = {
   listPaymentOrders: () => paymentsClient.get('/orders/'),
   getPaymentOrder: (id) => paymentsClient.get(`/orders/${id}/`),
   mockPayOrder: (id) => paymentsClient.post(`/orders/${id}/mock_pay/`),
+  submitPaymentProof: (id, data) => paymentsClient.post(`/orders/${id}/submit_proof/`, data),
   listAdminPaymentOrders: (params) => paymentsClient.get('/admin/orders/', { params }),
   getAdminPaymentStats: () => paymentsClient.get('/admin/stats/'),
   getAdminPaymentDiagnostics: () => paymentsClient.get('/admin/diagnostics/'),

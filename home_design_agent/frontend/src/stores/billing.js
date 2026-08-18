@@ -49,6 +49,12 @@ export const useBillingStore = defineStore('billing', () => {
     return result
   }
 
+  async function submitProof(id, data) {
+    const result = await api.submitPaymentProof(id, data)
+    await fetchOrders()
+    return result
+  }
+
   async function refreshAll() {
     await Promise.all([fetchBalance(true), fetchPlans(), fetchOrders(), fetchTransactions()])
   }
@@ -65,6 +71,7 @@ export const useBillingStore = defineStore('billing', () => {
     fetchTransactions,
     createOrder,
     mockPay,
+    submitProof,
     refreshAll,
   }
 })
