@@ -1,10 +1,15 @@
+import re
+import secrets
 from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
-from .models import PasswordResetToken
+from .models import PasswordResetToken, SmsVerificationCode
+from .sms import send_sms_code
+
+PHONE_RE = re.compile(r'^1[3-9]\d{9}$')
 
 
 def create_password_reset_token(user):
@@ -60,3 +65,62 @@ def send_password_reset_email(user, raw_token, reset_url):
         [user.email],
         fail_silently=settings.DEBUG,
     )
+
+
+def normalize_phone(value):
+    """去掉空格、横线与括号，返回纯数字；空值返回空字符串。"""
+    if not value:
+        return ''
+    return re.sub(r'[\s\-()]', '', str(value))
+
+
+def is_valid_phone(value):
+    """校验中国大陆手机号。"""
+    return bool(PHONE_RE.match(value or ''))
+
+
+def create_sms_code(phone, purpose):
+    """为指定手机号与用途创建一次性短信验证码，旧未用验证码作废。"""
+    SmsVerificationCode.objects.filter(
+        phone=phone,
+        purpose=purpose,
+        used_at__isnull=True,
+    ).update(used_at=timezone.now())
+
+    raw_code = SmsVerificationCode.generate_code()
+    expires_at = timezone.now() + timedelta(
+        minutes=getattr(settings, 'SMS_CODE_TTL_MINUTES', 5),
+    )
+    SmsVerificationCode.objects.create(
+        phone=phone,
+        purpose=purpose,
+        code_hash=SmsVerificationCode.hash_code(raw_code),
+        expires_at=expires_at,
+    )
+    send_sms_code(phone, raw_code)
+    return raw_code
+
+
+def verify_sms_code(phone, purpose, raw_code):
+    """校验验证码，返回 (记录, 错误信息)；校验成功会消耗验证码。"""
+    record = SmsVerificationCode.objects.filter(
+        phone=phone,
+        purpose=purpose,
+        used_at__isnull=True,
+    ).order_by('-created_at').first()
+
+    if record is None:
+        return None, '验证码不存在或已过期，请重新获取。'
+    if record.attempts >= getattr(settings, 'SMS_MAX_ATTEMPTS', 5):
+        return None, '尝试次数过多，请重新获取验证码。'
+    if timezone.now() > record.expires_at:
+        return None, '验证码已过期，请重新获取。'
+
+    record.attempts += 1
+    if not secrets.compare_digest(record.code_hash, SmsVerificationCode.hash_code(raw_code or '')):
+        record.save(update_fields=['attempts'])
+        return None, '验证码错误。'
+
+    record.used_at = timezone.now()
+    record.save(update_fields=['attempts', 'used_at'])
+    return record, None

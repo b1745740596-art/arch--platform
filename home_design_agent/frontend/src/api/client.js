@@ -144,6 +144,11 @@ export const api = {
   changePassword: (data) => usersClient.post('/change-password/', data),
   requestPasswordReset: (data) => usersClient.post('/password-reset/', data),
   confirmPasswordReset: (data) => usersClient.post('/password-reset/confirm/', data),
+  // 手机号绑定 / 验证码登录
+  sendPhoneBindCode: (phone) => usersClient.post('/phone/bind-code/', { phone }),
+  bindPhone: (data) => usersClient.post('/phone/bind/', data),
+  sendPhoneLoginCode: (phone) => usersClient.post('/phone/login-code/', { phone }),
+  phoneLogin: (data) => usersClient.post('/phone/login/', data),
   // 后台用户管理（staff/superuser）
   listAdminUsers: (params) => usersClient.get('/admin/users/', { params }),
   createAdminUser: (data) => usersClient.post('/admin/users/', data),

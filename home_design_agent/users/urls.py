@@ -17,6 +17,10 @@ urlpatterns = [
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('password-reset/', views.PasswordResetRequestView.as_view(), name='password-reset'),
     path('password-reset/confirm/', views.PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
+    path('phone/bind-code/', views.PhoneBindCodeView.as_view(), name='phone-bind-code'),
+    path('phone/bind/', views.PhoneBindView.as_view(), name='phone-bind'),
+    path('phone/login-code/', views.PhoneLoginCodeView.as_view(), name='phone-login-code'),
+    path('phone/login/', views.PhoneLoginView.as_view(), name='phone-login'),
     path('admin/users/', admin_user_list, name='admin-user-list'),
     path('admin/users/<int:pk>/', admin_user_detail, name='admin-user-detail'),
 ]

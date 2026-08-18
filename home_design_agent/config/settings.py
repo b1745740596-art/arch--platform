@@ -215,6 +215,15 @@ EMAIL_USE_TLS = env.bool('DJANGO_EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DJANGO_DEFAULT_FROM_EMAIL', default='noreply@example.com')
 PASSWORD_RESET_TIMEOUT_MINUTES = env.int('DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES', default=30)
 
+# ---- 短信验证码 ----
+# console：只打印验证码到日志，用于本地联调；webhook：POST 到短信网关。
+SMS_BACKEND = env('SMS_BACKEND', default='console')
+SMS_WEBHOOK_URL = env('SMS_WEBHOOK_URL', default='')
+SMS_WEBHOOK_TIMEOUT = env.int('SMS_WEBHOOK_TIMEOUT', default=10)
+SMS_CODE_LENGTH = env.int('SMS_CODE_LENGTH', default=6)
+SMS_CODE_TTL_MINUTES = env.int('SMS_CODE_TTL_MINUTES', default=5)
+SMS_MAX_ATTEMPTS = env.int('SMS_MAX_ATTEMPTS', default=5)
+
 # ---- 支付与额度 ----
 # mock：本地联调，不发起真实扣款，前端可点击「模拟支付」完成入账；
 # live：按下方渠道配置发起真实收款。上线前请务必切换为 live 并配置密钥。

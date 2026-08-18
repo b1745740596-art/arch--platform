@@ -4,8 +4,13 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import UserProfile
-from .services import consume_password_reset_token
+from .models import SmsVerificationCode, UserProfile
+from .services import (
+    consume_password_reset_token,
+    is_valid_phone,
+    normalize_phone,
+    verify_sms_code,
+)
 
 User = get_user_model()
 
@@ -31,7 +36,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_staff', 'is_superuser', 'roles', 'created_at', 'updated_at',
         )
         read_only_fields = (
-            'id', 'email_verified', 'free_credits', 'purchased_credits',
+            'id', 'phone', 'email_verified', 'free_credits', 'purchased_credits',
             'created_at', 'updated_at',
         )
 
@@ -195,3 +200,105 @@ class AdminUserSerializer(serializers.ModelSerializer):
             instance.groups.set(roles)
         self._sync_profile(instance, profile_data)
         return instance
+
+
+class SmsCodeRequestSerializer(serializers.Serializer):
+    """发送短信验证码的通用入参。"""
+
+    phone = serializers.CharField(max_length=20)
+
+    def validate_phone(self, value):
+        value = normalize_phone(value)
+        if not is_valid_phone(value):
+            raise serializers.ValidationError('请输入正确的手机号。')
+        return value
+
+
+class PhoneBindSerializer(serializers.Serializer):
+    """绑定手机号：验证码通过后写入当前用户资料。"""
+
+    phone = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=8)
+
+    def validate_phone(self, value):
+        value = normalize_phone(value)
+        if not is_valid_phone(value):
+            raise serializers.ValidationError('请输入正确的手机号。')
+        return value
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        phone = attrs['phone']
+        already_bound = UserProfile.objects.exclude(user=user).filter(
+            phone=phone,
+            user__is_active=True,
+        ).exists()
+        if already_bound:
+            raise serializers.ValidationError({'phone': '该手机号已被其他账号绑定。'})
+
+        record, error = verify_sms_code(
+            phone,
+            SmsVerificationCode.Purpose.BIND,
+            attrs['code'],
+        )
+        if record is None:
+            raise serializers.ValidationError({'code': error})
+        return attrs
+
+    def save(self):
+        user = self.context['request'].user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.phone = self.validated_data['phone']
+        profile.save(update_fields=['phone', 'updated_at'])
+        return profile
+
+
+def _generate_username_for_phone(phone):
+    """为验证码自动注册生成唯一用户名，避免与已有账号冲突。"""
+    base = f'u{phone}'
+    username = base
+    suffix = 1
+    while User.objects.filter(username=username).exists():
+        username = f'{base}_{suffix}'
+        suffix += 1
+    return username
+
+
+class PhoneLoginSerializer(serializers.Serializer):
+    """手机验证码登录：已绑定则登录，未绑定则自动注册并登录。"""
+
+    phone = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=8)
+
+    def validate_phone(self, value):
+        value = normalize_phone(value)
+        if not is_valid_phone(value):
+            raise serializers.ValidationError('请输入正确的手机号。')
+        return value
+
+    def validate(self, attrs):
+        phone = attrs['phone']
+        record, error = verify_sms_code(
+            phone,
+            SmsVerificationCode.Purpose.LOGIN,
+            attrs['code'],
+        )
+        if record is None:
+            raise serializers.ValidationError({'code': error})
+
+        profile = UserProfile.objects.filter(phone=phone).select_related('user').first()
+        if profile is not None and not profile.user.is_active:
+            raise serializers.ValidationError({'phone': '该账号已停用，请联系管理员。'})
+        attrs['profile'] = profile
+        return attrs
+
+    def save(self):
+        profile = self.validated_data.get('profile')
+        if profile is not None:
+            return profile.user
+
+        phone = self.validated_data['phone']
+        username = _generate_username_for_phone(phone)
+        user = User.objects.create_user(username=username, email='')
+        UserProfile.objects.create(user=user, phone=phone)
+        return user

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
@@ -28,7 +28,6 @@ const timezoneOptions = [
 
 const profileForm = reactive({
   display_name: '',
-  phone: '',
   bio: '',
   locale: 'zh-CN',
   timezone: 'Asia/Shanghai',
@@ -58,11 +57,83 @@ const passwordRules = computed(() => ({
   ],
 }))
 
+const phoneBindRef = ref()
+const phoneBinding = ref(false)
+const phoneCodeSending = ref(false)
+const phoneCountdown = ref(0)
+let phoneCountdownTimer = null
+
+const phoneBindForm = reactive({
+  phone: '',
+  code: '',
+})
+
+const phoneBindRules = computed(() => ({
+  phone: [
+    { required: true, message: t('auth.rules.phoneRequired'), trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: t('auth.rules.phoneInvalid'), trigger: 'blur' },
+  ],
+  code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
+}))
+
+function startPhoneCountdown(seconds) {
+  phoneCountdown.value = seconds
+  if (phoneCountdownTimer) clearInterval(phoneCountdownTimer)
+  phoneCountdownTimer = setInterval(() => {
+    phoneCountdown.value -= 1
+    if (phoneCountdown.value <= 0) {
+      clearInterval(phoneCountdownTimer)
+      phoneCountdownTimer = null
+    }
+  }, 1000)
+}
+
+async function sendPhoneBindCode() {
+  if (!/^1[3-9]\d{9}$/.test(phoneBindForm.phone.trim())) {
+    ElMessage.error(t('auth.rules.phoneInvalid'))
+    return
+  }
+  phoneCodeSending.value = true
+  try {
+    await account.sendPhoneBindCode(phoneBindForm.phone.trim())
+    ElMessage.success(t('auth.codeSent'))
+    startPhoneCountdown(60)
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    phoneCodeSending.value = false
+  }
+}
+
+async function submitPhoneBind() {
+  await phoneBindRef.value.validate()
+  phoneBinding.value = true
+  try {
+    await account.bindPhone({
+      phone: phoneBindForm.phone.trim(),
+      code: phoneBindForm.code.trim(),
+    })
+    ElMessage.success(t('account.phoneBound'))
+    phoneBindForm.code = ''
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    phoneBinding.value = false
+  }
+}
+
+onUnmounted(() => {
+  if (phoneCountdownTimer) clearInterval(phoneCountdownTimer)
+})
+
 onMounted(async () => {
   const data = await account.fetchProfile(true)
   if (data) {
     profileForm.display_name = data.display_name || ''
-    profileForm.phone = data.phone || ''
     profileForm.bio = data.bio || ''
     profileForm.locale = data.locale || 'zh-CN'
     profileForm.timezone = data.timezone || 'Asia/Shanghai'
@@ -134,9 +205,6 @@ async function submitPassword() {
         <el-form-item :label="t('account.displayName')" prop="display_name">
           <el-input v-model="profileForm.display_name" maxlength="50" />
         </el-form-item>
-        <el-form-item :label="t('account.phone')" prop="phone">
-          <el-input v-model="profileForm.phone" maxlength="20" />
-        </el-form-item>
         <el-form-item :label="t('account.bio')" prop="bio">
           <el-input v-model="profileForm.bio" type="textarea" maxlength="200" show-word-limit />
         </el-form-item>
@@ -152,6 +220,30 @@ async function submitPassword() {
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="savingProfile" @click="submitProfile">{{ t('account.saveProfile') }}</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never" style="margin-top:16px">
+      <template #header><b>{{ t('account.phoneTitle') }}</b></template>
+      <el-form ref="phoneBindRef" :model="phoneBindForm" :rules="phoneBindRules" label-width="100px">
+        <el-form-item :label="t('account.currentPhone')">
+          <el-input :model-value="account.profile?.phone || t('common.none')" disabled />
+        </el-form-item>
+        <el-form-item :label="t('account.phone')" prop="phone">
+          <el-input v-model="phoneBindForm.phone" :placeholder="t('auth.phonePlaceholder')">
+            <template #append>
+              <el-button :disabled="phoneCountdown > 0" :loading="phoneCodeSending" @click="sendPhoneBindCode">
+                {{ phoneCountdown > 0 ? `${phoneCountdown}s` : t('auth.sendCode') }}
+              </el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item :label="t('auth.code')" prop="code">
+          <el-input v-model="phoneBindForm.code" maxlength="8" :placeholder="t('auth.codePlaceholder')" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="phoneBinding" @click="submitPhoneBind">{{ t('account.bindPhone') }}</el-button>
         </el-form-item>
       </el-form>
     </el-card>

@@ -1,23 +1,27 @@
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login
 from rest_framework import viewsets
 from rest_framework.generics import GenericAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import UserProfile
+from .models import SmsVerificationCode, UserProfile
 from .permissions import CanManageUsers, IsActiveUser
 from .serializers import (
     AdminUserSerializer,
     ChangePasswordSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
+    PhoneBindSerializer,
+    PhoneLoginSerializer,
+    SmsCodeRequestSerializer,
     UserProfileSerializer,
 )
 from .services import (
     build_password_reset_url,
     create_password_reset_token,
+    create_sms_code,
     send_password_reset_email,
 )
 
@@ -30,6 +34,16 @@ def _get_or_create_profile(user):
         defaults={'free_credits': getattr(settings, 'PAYMENT_FREE_CREDITS', 5)},
     )
     return profile
+
+
+def _user_payload(user):
+    return {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'is_staff': user.is_staff,
+        'is_superuser': user.is_superuser,
+    }
 
 
 class MeView(RetrieveUpdateAPIView):
@@ -95,6 +109,75 @@ class PasswordResetConfirmView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({'detail': '密码已重置，请使用新密码登录。'})
+
+
+class PhoneBindCodeView(APIView):
+    """绑定手机前发送验证码（需登录）。"""
+
+    permission_classes = [IsAuthenticated, IsActiveUser]
+
+    def post(self, request):
+        serializer = SmsCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data['phone']
+
+        already_bound = UserProfile.objects.exclude(user=request.user).filter(
+            phone=phone,
+            user__is_active=True,
+        ).exists()
+        if already_bound:
+            return Response({'phone': ['该手机号已被其他账号绑定。']}, status=400)
+
+        raw_code = create_sms_code(phone, SmsVerificationCode.Purpose.BIND)
+        payload = {'detail': '验证码已发送。'}
+        if settings.DEBUG:
+            payload['debug'] = {'code': raw_code}
+        return Response(payload)
+
+
+class PhoneBindView(GenericAPIView):
+    """验证验证码并绑定手机号（需登录）。"""
+
+    permission_classes = [IsAuthenticated, IsActiveUser]
+    serializer_class = PhoneBindSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({'detail': '手机号绑定成功。'})
+
+
+class PhoneLoginCodeView(APIView):
+    """验证码登录/自动注册前发送验证码。"""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = SmsCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        phone = serializer.validated_data['phone']
+
+        raw_code = create_sms_code(phone, SmsVerificationCode.Purpose.LOGIN)
+        payload = {'detail': '验证码已发送。'}
+        if settings.DEBUG:
+            payload['debug'] = {'code': raw_code}
+        return Response(payload)
+
+
+class PhoneLoginView(APIView):
+    """使用手机号 + 验证码登录；未绑定手机号时自动注册并登录。"""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = PhoneLoginSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        login(request, user)
+        return Response(_user_payload(user))
 
 
 class AdminUserViewSet(viewsets.ModelViewSet):

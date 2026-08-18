@@ -12,7 +12,7 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from users.models import PasswordResetToken, UserProfile
+from users.models import PasswordResetToken, SmsVerificationCode, UserProfile
 
 User = get_user_model()
 
@@ -21,6 +21,10 @@ CHANGE_PASSWORD_URL = '/api/users/change-password/'
 RESET_REQUEST_URL = '/api/users/password-reset/'
 RESET_CONFIRM_URL = '/api/users/password-reset/confirm/'
 ADMIN_USERS_URL = '/api/users/admin/users/'
+PHONE_BIND_CODE_URL = '/api/users/phone/bind-code/'
+PHONE_BIND_URL = '/api/users/phone/bind/'
+PHONE_LOGIN_CODE_URL = '/api/users/phone/login-code/'
+PHONE_LOGIN_URL = '/api/users/phone/login/'
 
 
 class MeViewTests(APITestCase):
@@ -44,14 +48,14 @@ class MeViewTests(APITestCase):
         self.client.force_authenticate(self.user)
         response = self.client.patch(
             ME_URL,
-            {'display_name': 'Alice', 'phone': '13800000000', 'bio': 'hello'},
+            {'display_name': 'Alice', 'bio': 'hello'},
             format='json',
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertEqual(self.user.profile.display_name, 'Alice')
-        self.assertEqual(self.user.profile.phone, '13800000000')
+        self.assertEqual(self.user.profile.phone, '')
         self.assertEqual(self.user.first_name, 'Alice')
 
 
@@ -246,6 +250,100 @@ class AdminUserViewSetTests(APITestCase):
         response = self.client.get(ADMIN_USERS_URL)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+@override_settings(DEBUG=True, SMS_BACKEND='console')
+class PhoneAuthFlowTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='dave', password='secret123')
+
+    def _bind_phone(self, phone='13800000000'):
+        self.client.force_authenticate(self.user)
+        code_response = self.client.post(PHONE_BIND_CODE_URL, {'phone': phone}, format='json')
+        self.assertEqual(code_response.status_code, status.HTTP_200_OK)
+        raw_code = code_response.data['debug']['code']
+        bind_response = self.client.post(
+            PHONE_BIND_URL,
+            {'phone': phone, 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(bind_response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profile.phone, phone)
+        return raw_code
+
+    def test_bind_requires_authentication(self):
+        response = self.client.post(PHONE_BIND_CODE_URL, {'phone': '13800000000'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_bind_phone_flow(self):
+        self._bind_phone()
+        code = SmsVerificationCode.objects.get(phone='13800000000', purpose='bind')
+        self.assertIsNotNone(code.used_at)
+
+    def test_bind_rejects_invalid_phone(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(PHONE_BIND_CODE_URL, {'phone': '123'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bind_rejects_phone_used_by_other(self):
+        other = User.objects.create_user(username='other', password='secret123')
+        UserProfile.objects.create(user=other, phone='13800000000')
+
+        self.client.force_authenticate(self.user)
+        response = self.client.post(PHONE_BIND_CODE_URL, {'phone': '13800000000'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_phone_login_flow(self):
+        self._bind_phone()
+
+        code_response = self.client.post(PHONE_LOGIN_CODE_URL, {'phone': '13800000000'}, format='json')
+        self.assertEqual(code_response.status_code, status.HTTP_200_OK)
+        raw_code = code_response.data['debug']['code']
+
+        login_response = self.client.post(
+            PHONE_LOGIN_URL,
+            {'phone': '13800000000', 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(login_response.data['username'], 'dave')
+
+        me_response = self.client.get(ME_URL)
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['username'], 'dave')
+
+    def test_phone_login_code_sends_for_unbound_phone(self):
+        response = self.client.post(PHONE_LOGIN_CODE_URL, {'phone': '13800000000'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('debug', response.data)
+
+    def test_phone_login_auto_registers(self):
+        code_response = self.client.post(PHONE_LOGIN_CODE_URL, {'phone': '13800000000'}, format='json')
+        raw_code = code_response.data['debug']['code']
+
+        login_response = self.client.post(
+            PHONE_LOGIN_URL,
+            {'phone': '13800000000', 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+
+        user = User.objects.get(profile__phone='13800000000')
+        self.assertEqual(login_response.data['username'], user.username)
+
+        me_response = self.client.get(ME_URL)
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['username'], user.username)
+
+    def test_phone_login_rejects_wrong_code(self):
+        self._bind_phone()
+        response = self.client.post(
+            PHONE_LOGIN_URL,
+            {'phone': '13800000000', 'code': '000000'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class SeedRolesCommandTests(APITestCase):

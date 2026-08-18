@@ -34,6 +34,16 @@ export const useAccountStore = defineStore('account', () => {
     return api.confirmPasswordReset(data)
   }
 
+  async function sendPhoneBindCode(phone) {
+    return api.sendPhoneBindCode(phone)
+  }
+
+  async function bindPhone(data) {
+    await api.bindPhone(data)
+    profile.value = await api.getProfile()
+    return profile.value
+  }
+
   return {
     profile,
     loading,
@@ -42,5 +52,7 @@ export const useAccountStore = defineStore('account', () => {
     changePassword,
     requestPasswordReset,
     confirmPasswordReset,
+    sendPhoneBindCode,
+    bindPhone,
   }
 })
