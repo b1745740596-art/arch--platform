@@ -199,7 +199,8 @@ onUnmounted(() => {
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane :label="t('auth.phoneLogin')" name="phone">
+      <!-- 暂时隐藏手机验证码登录入口，代码保留 -->
+      <el-tab-pane v-if="false" :label="t('auth.phoneLogin')" name="phone">
         <el-form ref="phoneFormRef" :model="phoneForm" :rules="phoneRules" label-width="100px">
           <el-form-item :label="t('account.phone')" prop="phone">
             <el-input v-model="phoneForm.phone" :placeholder="t('auth.phonePlaceholder')">
