@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
-from .models import PasswordResetToken, SmsVerificationCode
+from .models import EmailVerificationCode, PasswordResetToken, SmsVerificationCode
 from .sms import send_sms_code
 
 PHONE_RE = re.compile(r'^1[3-9]\d{9}$')
@@ -118,6 +118,69 @@ def verify_sms_code(phone, purpose, raw_code):
 
     record.attempts += 1
     if not secrets.compare_digest(record.code_hash, SmsVerificationCode.hash_code(raw_code or '')):
+        record.save(update_fields=['attempts'])
+        return None, '验证码错误。'
+
+    record.used_at = timezone.now()
+    record.save(update_fields=['attempts', 'used_at'])
+    return record, None
+
+
+def send_email_verification_code(email, raw_code):
+    subject = '你的 Arch_AI 邮箱验证码'
+    ttl = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 5)
+    message = (
+        f'你的邮箱验证码是：{raw_code}\n\n'
+        f'请在 {ttl} 分钟内完成验证。如果这不是你本人操作，请忽略此邮件。'
+    )
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [email],
+        fail_silently=settings.DEBUG,
+    )
+
+
+def create_email_code(email, purpose):
+    """为指定邮箱与用途创建一次性验证码，旧未用验证码作废，并发送邮件。"""
+    EmailVerificationCode.objects.filter(
+        email=email,
+        purpose=purpose,
+        used_at__isnull=True,
+    ).update(used_at=timezone.now())
+
+    raw_code = EmailVerificationCode.generate_code()
+    expires_at = timezone.now() + timedelta(
+        minutes=getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 5),
+    )
+    EmailVerificationCode.objects.create(
+        email=email,
+        purpose=purpose,
+        code_hash=EmailVerificationCode.hash_code(raw_code),
+        expires_at=expires_at,
+    )
+    send_email_verification_code(email, raw_code)
+    return raw_code
+
+
+def verify_email_code(email, purpose, raw_code):
+    """校验邮箱验证码，返回 (记录, 错误信息)；校验成功会消耗验证码。"""
+    record = EmailVerificationCode.objects.filter(
+        email=email,
+        purpose=purpose,
+        used_at__isnull=True,
+    ).order_by('-created_at').first()
+
+    if record is None:
+        return None, '验证码不存在或已过期，请重新获取。'
+    if record.attempts >= getattr(settings, 'EMAIL_CODE_MAX_ATTEMPTS', 5):
+        return None, '尝试次数过多，请重新获取验证码。'
+    if timezone.now() > record.expires_at:
+        return None, '验证码已过期，请重新获取。'
+
+    record.attempts += 1
+    if not secrets.compare_digest(record.code_hash, EmailVerificationCode.hash_code(raw_code or '')):
         record.save(update_fields=['attempts'])
         return None, '验证码错误。'
 

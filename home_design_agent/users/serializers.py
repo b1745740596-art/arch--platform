@@ -4,11 +4,12 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import SmsVerificationCode, UserProfile
+from .models import EmailVerificationCode, SmsVerificationCode, UserProfile
 from .services import (
     consume_password_reset_token,
     is_valid_phone,
     normalize_phone,
+    verify_email_code,
     verify_sms_code,
 )
 
@@ -301,4 +302,101 @@ class PhoneLoginSerializer(serializers.Serializer):
         username = _generate_username_for_phone(phone)
         user = User.objects.create_user(username=username, email='')
         UserProfile.objects.create(user=user, phone=phone)
+        return user
+
+
+def _generate_username_for_email(email):
+    """为邮箱验证码自动注册生成唯一用户名。"""
+    local_part = email.split('@')[0].lower()
+    base = ''.join(c for c in local_part if c.isalnum() or c in '_.')[:20] or 'user'
+    username = base
+    suffix = 1
+    while User.objects.filter(username=username).exists():
+        username = f'{base}_{suffix}'
+        suffix += 1
+    return username
+
+
+class EmailCodeRequestSerializer(serializers.Serializer):
+    """发送邮箱验证码的通用入参。"""
+
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        return (value or '').strip().lower()
+
+
+class EmailBindSerializer(serializers.Serializer):
+    """绑定/验证邮箱：验证码通过后写入当前用户。"""
+
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=8)
+
+    def validate_email(self, value):
+        return (value or '').strip().lower()
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        email = attrs['email']
+        if User.objects.exclude(pk=user.pk).filter(email=email, is_active=True).exists():
+            raise serializers.ValidationError({'email': '该邮箱已被其他账号绑定。'})
+
+        record, error = verify_email_code(
+            email,
+            EmailVerificationCode.Purpose.BIND,
+            attrs['code'],
+        )
+        if record is None:
+            raise serializers.ValidationError({'code': error})
+        return attrs
+
+    def save(self):
+        user = self.context['request'].user
+        user.email = self.validated_data['email']
+        user.save(update_fields=['email'])
+
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.email_verified = True
+        profile.save(update_fields=['email_verified', 'updated_at'])
+        return profile
+
+
+class EmailLoginSerializer(serializers.Serializer):
+    """邮箱验证码登录：已绑定则登录，未绑定则自动注册并登录。"""
+
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=8)
+
+    def validate_email(self, value):
+        return (value or '').strip().lower()
+
+    def validate(self, attrs):
+        email = attrs['email']
+        record, error = verify_email_code(
+            email,
+            EmailVerificationCode.Purpose.LOGIN,
+            attrs['code'],
+        )
+        if record is None:
+            raise serializers.ValidationError({'code': error})
+
+        user = User.objects.filter(email=email).first()
+        if user is not None and not user.is_active:
+            raise serializers.ValidationError({'email': '该账号已停用，请联系管理员。'})
+        attrs['user'] = user
+        return attrs
+
+    def save(self):
+        user = self.validated_data.get('user')
+        if user is not None:
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            if not profile.email_verified:
+                profile.email_verified = True
+                profile.save(update_fields=['email_verified', 'updated_at'])
+            return user
+
+        email = self.validated_data['email']
+        username = _generate_username_for_email(email)
+        user = User.objects.create_user(username=username, email=email)
+        UserProfile.objects.create(user=user, email_verified=True)
         return user

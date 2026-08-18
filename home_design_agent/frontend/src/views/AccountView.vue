@@ -76,6 +76,25 @@ const phoneBindRules = computed(() => ({
   code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
 }))
 
+const emailBindRef = ref()
+const emailBinding = ref(false)
+const emailCodeSending = ref(false)
+const emailCountdown = ref(0)
+let emailCountdownTimer = null
+
+const emailBindForm = reactive({
+  email: '',
+  code: '',
+})
+
+const emailBindRules = computed(() => ({
+  email: [
+    { required: true, message: t('auth.rules.email'), trigger: 'blur' },
+    { type: 'email', message: t('auth.rules.email'), trigger: 'blur' },
+  ],
+  code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
+}))
+
 function startPhoneCountdown(seconds) {
   phoneCountdown.value = seconds
   if (phoneCountdownTimer) clearInterval(phoneCountdownTimer)
@@ -126,8 +145,59 @@ async function submitPhoneBind() {
   }
 }
 
+function startEmailCountdown(seconds) {
+  emailCountdown.value = seconds
+  if (emailCountdownTimer) clearInterval(emailCountdownTimer)
+  emailCountdownTimer = setInterval(() => {
+    emailCountdown.value -= 1
+    if (emailCountdown.value <= 0) {
+      clearInterval(emailCountdownTimer)
+      emailCountdownTimer = null
+    }
+  }, 1000)
+}
+
+async function sendEmailBindCode() {
+  if (!emailBindForm.email.trim()) {
+    ElMessage.error(t('auth.rules.email'))
+    return
+  }
+  emailCodeSending.value = true
+  try {
+    await account.sendEmailBindCode(emailBindForm.email.trim())
+    ElMessage.success(t('auth.codeSent'))
+    startEmailCountdown(60)
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    emailCodeSending.value = false
+  }
+}
+
+async function submitEmailBind() {
+  await emailBindRef.value.validate()
+  emailBinding.value = true
+  try {
+    await account.bindEmail({
+      email: emailBindForm.email.trim(),
+      code: emailBindForm.code.trim(),
+    })
+    ElMessage.success(t('account.emailBound'))
+    emailBindForm.code = ''
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    emailBinding.value = false
+  }
+}
+
 onUnmounted(() => {
   if (phoneCountdownTimer) clearInterval(phoneCountdownTimer)
+  if (emailCountdownTimer) clearInterval(emailCountdownTimer)
 })
 
 onMounted(async () => {
@@ -244,6 +314,30 @@ async function submitPassword() {
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="phoneBinding" @click="submitPhoneBind">{{ t('account.bindPhone') }}</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-card shadow="never" style="margin-top:16px">
+      <template #header><b>{{ t('account.emailTitle') }}</b></template>
+      <el-form ref="emailBindRef" :model="emailBindForm" :rules="emailBindRules" label-width="100px">
+        <el-form-item :label="t('account.currentEmail')">
+          <el-input :model-value="account.profile?.email || t('common.none')" disabled />
+        </el-form-item>
+        <el-form-item :label="t('auth.email')" prop="email">
+          <el-input v-model="emailBindForm.email" :placeholder="t('auth.emailPlaceholder')">
+            <template #append>
+              <el-button :disabled="emailCountdown > 0" :loading="emailCodeSending" @click="sendEmailBindCode">
+                {{ emailCountdown > 0 ? `${emailCountdown}s` : t('auth.sendCode') }}
+              </el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+        <el-form-item :label="t('auth.code')" prop="code">
+          <el-input v-model="emailBindForm.code" maxlength="8" :placeholder="t('auth.codePlaceholder')" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="emailBinding" @click="submitEmailBind">{{ t('account.bindEmail') }}</el-button>
         </el-form-item>
       </el-form>
     </el-card>

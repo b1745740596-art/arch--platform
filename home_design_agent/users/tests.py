@@ -12,7 +12,12 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from users.models import PasswordResetToken, SmsVerificationCode, UserProfile
+from users.models import (
+    EmailVerificationCode,
+    PasswordResetToken,
+    SmsVerificationCode,
+    UserProfile,
+)
 
 User = get_user_model()
 
@@ -25,6 +30,10 @@ PHONE_BIND_CODE_URL = '/api/users/phone/bind-code/'
 PHONE_BIND_URL = '/api/users/phone/bind/'
 PHONE_LOGIN_CODE_URL = '/api/users/phone/login-code/'
 PHONE_LOGIN_URL = '/api/users/phone/login/'
+EMAIL_BIND_CODE_URL = '/api/users/email/bind-code/'
+EMAIL_BIND_URL = '/api/users/email/bind/'
+EMAIL_LOGIN_CODE_URL = '/api/users/email/login-code/'
+EMAIL_LOGIN_URL = '/api/users/email/login/'
 
 
 class MeViewTests(APITestCase):
@@ -341,6 +350,96 @@ class PhoneAuthFlowTests(APITestCase):
         response = self.client.post(
             PHONE_LOGIN_URL,
             {'phone': '13800000000', 'code': '000000'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+@override_settings(
+    DEBUG=True,
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+)
+class EmailAuthFlowTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='erin',
+            email='erin@example.com',
+            password='secret123',
+        )
+
+    def _bind_email(self, email='erin@example.com'):
+        self.client.force_authenticate(self.user)
+        code_response = self.client.post(EMAIL_BIND_CODE_URL, {'email': email}, format='json')
+        self.assertEqual(code_response.status_code, status.HTTP_200_OK)
+        raw_code = code_response.data['debug']['code']
+        bind_response = self.client.post(
+            EMAIL_BIND_URL,
+            {'email': email, 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(bind_response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, email)
+        self.assertTrue(self.user.profile.email_verified)
+        return raw_code
+
+    def test_bind_requires_authentication(self):
+        response = self.client.post(EMAIL_BIND_CODE_URL, {'email': 'erin@example.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_bind_email_flow(self):
+        self._bind_email()
+        code = EmailVerificationCode.objects.get(email='erin@example.com', purpose='bind')
+        self.assertIsNotNone(code.used_at)
+
+    def test_bind_rejects_email_used_by_other(self):
+        User.objects.create_user(username='other', email='other@example.com', password='secret123')
+        self.client.force_authenticate(self.user)
+        response = self.client.post(EMAIL_BIND_CODE_URL, {'email': 'other@example.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_email_login_flow(self):
+        code_response = self.client.post(EMAIL_LOGIN_CODE_URL, {'email': 'erin@example.com'}, format='json')
+        self.assertEqual(code_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        raw_code = code_response.data['debug']['code']
+
+        login_response = self.client.post(
+            EMAIL_LOGIN_URL,
+            {'email': 'erin@example.com', 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(login_response.data['username'], 'erin')
+
+        me_response = self.client.get(ME_URL)
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['username'], 'erin')
+
+    def test_email_login_auto_registers(self):
+        code_response = self.client.post(EMAIL_LOGIN_CODE_URL, {'email': 'new@example.com'}, format='json')
+        raw_code = code_response.data['debug']['code']
+
+        login_response = self.client.post(
+            EMAIL_LOGIN_URL,
+            {'email': 'new@example.com', 'code': raw_code},
+            format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+
+        user = User.objects.get(email='new@example.com')
+        self.assertEqual(login_response.data['username'], user.username)
+        self.assertTrue(user.profile.email_verified)
+
+        me_response = self.client.get(ME_URL)
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['username'], user.username)
+
+    def test_email_login_rejects_wrong_code(self):
+        self.client.post(EMAIL_LOGIN_CODE_URL, {'email': 'erin@example.com'}, format='json')
+        response = self.client.post(
+            EMAIL_LOGIN_URL,
+            {'email': 'erin@example.com', 'code': '000000'},
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

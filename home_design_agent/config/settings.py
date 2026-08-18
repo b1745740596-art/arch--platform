@@ -212,6 +212,7 @@ EMAIL_PORT = env.int('DJANGO_EMAIL_PORT', default=587)
 EMAIL_HOST_USER = env('DJANGO_EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('DJANGO_EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('DJANGO_EMAIL_USE_TLS', default=True)
+EMAIL_USE_SSL = env.bool('DJANGO_EMAIL_USE_SSL', default=False)
 DEFAULT_FROM_EMAIL = env('DJANGO_DEFAULT_FROM_EMAIL', default='noreply@example.com')
 PASSWORD_RESET_TIMEOUT_MINUTES = env.int('DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES', default=30)
 
@@ -223,6 +224,11 @@ SMS_WEBHOOK_TIMEOUT = env.int('SMS_WEBHOOK_TIMEOUT', default=10)
 SMS_CODE_LENGTH = env.int('SMS_CODE_LENGTH', default=6)
 SMS_CODE_TTL_MINUTES = env.int('SMS_CODE_TTL_MINUTES', default=5)
 SMS_MAX_ATTEMPTS = env.int('SMS_MAX_ATTEMPTS', default=5)
+
+# 邮箱验证码
+EMAIL_CODE_LENGTH = env.int('EMAIL_CODE_LENGTH', default=6)
+EMAIL_CODE_TTL_MINUTES = env.int('EMAIL_CODE_TTL_MINUTES', default=5)
+EMAIL_CODE_MAX_ATTEMPTS = env.int('EMAIL_CODE_MAX_ATTEMPTS', default=5)
 
 # ---- 支付与额度 ----
 # mock：本地联调，不发起真实扣款，前端可点击「模拟支付」完成入账；

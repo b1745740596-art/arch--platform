@@ -149,6 +149,11 @@ export const api = {
   bindPhone: (data) => usersClient.post('/phone/bind/', data),
   sendPhoneLoginCode: (phone) => usersClient.post('/phone/login-code/', { phone }),
   phoneLogin: (data) => usersClient.post('/phone/login/', data),
+  // 邮箱验证 / 验证码登录
+  sendEmailBindCode: (email) => usersClient.post('/email/bind-code/', { email }),
+  bindEmail: (data) => usersClient.post('/email/bind/', data),
+  sendEmailLoginCode: (email) => usersClient.post('/email/login-code/', { email }),
+  emailLogin: (data) => usersClient.post('/email/login/', data),
   // 后台用户管理（staff/superuser）
   listAdminUsers: (params) => usersClient.get('/admin/users/', { params }),
   createAdminUser: (data) => usersClient.post('/admin/users/', data),

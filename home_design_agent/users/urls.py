@@ -21,6 +21,10 @@ urlpatterns = [
     path('phone/bind/', views.PhoneBindView.as_view(), name='phone-bind'),
     path('phone/login-code/', views.PhoneLoginCodeView.as_view(), name='phone-login-code'),
     path('phone/login/', views.PhoneLoginView.as_view(), name='phone-login'),
+    path('email/bind-code/', views.EmailBindCodeView.as_view(), name='email-bind-code'),
+    path('email/bind/', views.EmailBindView.as_view(), name='email-bind'),
+    path('email/login-code/', views.EmailLoginCodeView.as_view(), name='email-login-code'),
+    path('email/login/', views.EmailLoginView.as_view(), name='email-login'),
     path('admin/users/', admin_user_list, name='admin-user-list'),
     path('admin/users/<int:pk>/', admin_user_detail, name='admin-user-detail'),
 ]

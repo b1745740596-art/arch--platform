@@ -121,3 +121,43 @@ class SmsVerificationCode(models.Model):
         length = getattr(settings, 'SMS_CODE_LENGTH', 6)
         upper_bound = 10 ** length
         return str(secrets.randbelow(upper_bound)).zfill(length)
+
+
+class EmailVerificationCode(models.Model):
+    """邮箱验证码：用于邮箱验证、绑定邮箱与验证码登录。"""
+
+    class Purpose(models.TextChoices):
+        BIND = 'bind', '绑定邮箱'
+        LOGIN = 'login', '验证码登录'
+
+    email = models.EmailField('邮箱', max_length=254, db_index=True)
+    purpose = models.CharField('用途', max_length=10, choices=Purpose.choices)
+    code_hash = models.CharField('验证码摘要', max_length=64)
+    expires_at = models.DateTimeField('过期时间')
+    attempts = models.PositiveSmallIntegerField('失败次数', default=0)
+    used_at = models.DateTimeField('使用时间', null=True, blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '邮箱验证码'
+        ordering = ('-created_at',)
+        indexes = [
+            models.Index(fields=['email', 'purpose', 'used_at']),
+        ]
+
+    def __str__(self):
+        return f'{self.email}@{self.purpose}@{self.created_at:%Y-%m-%d %H:%M}'
+
+    @property
+    def is_valid(self):
+        return self.used_at is None and timezone.now() <= self.expires_at
+
+    @staticmethod
+    def hash_code(raw_code):
+        return hashlib.sha256(raw_code.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def generate_code():
+        length = getattr(settings, 'EMAIL_CODE_LENGTH', 6)
+        upper_bound = 10 ** length
+        return str(secrets.randbelow(upper_bound)).zfill(length)

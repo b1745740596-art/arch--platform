@@ -6,11 +6,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import SmsVerificationCode, UserProfile
+from .models import EmailVerificationCode, SmsVerificationCode, UserProfile
 from .permissions import CanManageUsers, IsActiveUser
 from .serializers import (
     AdminUserSerializer,
     ChangePasswordSerializer,
+    EmailBindSerializer,
+    EmailCodeRequestSerializer,
+    EmailLoginSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PhoneBindSerializer,
@@ -20,6 +23,7 @@ from .serializers import (
 )
 from .services import (
     build_password_reset_url,
+    create_email_code,
     create_password_reset_token,
     create_sms_code,
     send_password_reset_email,
@@ -174,6 +178,71 @@ class PhoneLoginView(APIView):
 
     def post(self, request):
         serializer = PhoneLoginSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        login(request, user)
+        return Response(_user_payload(user))
+
+
+class EmailBindCodeView(APIView):
+    """绑定/验证邮箱前发送验证码（需登录）。"""
+
+    permission_classes = [IsAuthenticated, IsActiveUser]
+
+    def post(self, request):
+        serializer = EmailCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        if User.objects.exclude(pk=request.user.pk).filter(email=email, is_active=True).exists():
+            return Response({'email': ['该邮箱已被其他账号绑定。']}, status=400)
+
+        raw_code = create_email_code(email, EmailVerificationCode.Purpose.BIND)
+        payload = {'detail': '验证码已发送。'}
+        if settings.DEBUG:
+            payload['debug'] = {'code': raw_code}
+        return Response(payload)
+
+
+class EmailBindView(GenericAPIView):
+    """验证邮箱验证码并绑定/验证邮箱（需登录）。"""
+
+    permission_classes = [IsAuthenticated, IsActiveUser]
+    serializer_class = EmailBindSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({'detail': '邮箱验证成功。'})
+
+
+class EmailLoginCodeView(APIView):
+    """邮箱验证码登录/自动注册前发送验证码。"""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = EmailCodeRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+
+        raw_code = create_email_code(email, EmailVerificationCode.Purpose.LOGIN)
+        payload = {'detail': '验证码已发送。'}
+        if settings.DEBUG:
+            payload['debug'] = {'code': raw_code}
+        return Response(payload)
+
+
+class EmailLoginView(APIView):
+    """使用邮箱 + 验证码登录；未注册邮箱时自动注册并登录。"""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = EmailLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         login(request, user)

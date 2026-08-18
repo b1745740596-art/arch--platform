@@ -43,6 +43,25 @@ const phoneRules = computed(() => ({
   code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
 }))
 
+const emailFormRef = ref()
+const emailSubmitting = ref(false)
+const emailCodeSending = ref(false)
+const emailCountdown = ref(0)
+let emailCountdownTimer = null
+
+const emailForm = reactive({
+  email: '',
+  code: '',
+})
+
+const emailRules = computed(() => ({
+  email: [
+    { required: true, message: t('auth.rules.email'), trigger: 'blur' },
+    { type: 'email', message: t('auth.rules.email'), trigger: 'blur' },
+  ],
+  code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
+}))
+
 function startCountdown(seconds) {
   countdown.value = seconds
   if (countdownTimer) clearInterval(countdownTimer)
@@ -51,6 +70,18 @@ function startCountdown(seconds) {
     if (countdown.value <= 0) {
       clearInterval(countdownTimer)
       countdownTimer = null
+    }
+  }, 1000)
+}
+
+function startEmailCountdown(seconds) {
+  emailCountdown.value = seconds
+  if (emailCountdownTimer) clearInterval(emailCountdownTimer)
+  emailCountdownTimer = setInterval(() => {
+    emailCountdown.value -= 1
+    if (emailCountdown.value <= 0) {
+      clearInterval(emailCountdownTimer)
+      emailCountdownTimer = null
     }
   }, 1000)
 }
@@ -106,8 +137,44 @@ async function submitPhone() {
   }
 }
 
+async function sendEmailCode() {
+  if (!emailForm.email.trim()) {
+    ElMessage.error(t('auth.rules.email'))
+    return
+  }
+  emailCodeSending.value = true
+  try {
+    await api.sendEmailLoginCode(emailForm.email.trim())
+    ElMessage.success(t('auth.codeSent'))
+    startEmailCountdown(60)
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    emailCodeSending.value = false
+  }
+}
+
+async function submitEmail() {
+  await emailFormRef.value.validate()
+  emailSubmitting.value = true
+  try {
+    await auth.emailLogin({ email: emailForm.email.trim(), code: emailForm.code.trim() })
+    ElMessage.success(t('auth.loginSuccess'))
+    router.push(route.query.redirect || '/')
+  } catch (e) {
+    const data = e?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
+    ElMessage.error(t('common.submitFailed', { msg }))
+  } finally {
+    emailSubmitting.value = false
+  }
+}
+
 onUnmounted(() => {
   if (countdownTimer) clearInterval(countdownTimer)
+  if (emailCountdownTimer) clearInterval(emailCountdownTimer)
 })
 </script>
 
@@ -148,6 +215,27 @@ onUnmounted(() => {
           </el-form-item>
           <el-form-item>
             <el-button type="primary" :loading="phoneSubmitting" @click="submitPhone">{{ t('auth.loginSubmit') }}</el-button>
+            <el-button @click="router.push('/register')">{{ t('auth.registerSubmit') }}</el-button>
+          </el-form-item>
+        </el-form>
+      </el-tab-pane>
+
+      <el-tab-pane :label="t('auth.emailLogin')" name="email">
+        <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-width="100px">
+          <el-form-item :label="t('auth.email')" prop="email">
+            <el-input v-model="emailForm.email" :placeholder="t('auth.emailPlaceholder')">
+              <template #append>
+                <el-button :disabled="emailCountdown > 0" :loading="emailCodeSending" @click="sendEmailCode">
+                  {{ emailCountdown > 0 ? `${emailCountdown}s` : t('auth.sendCode') }}
+                </el-button>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item :label="t('auth.code')" prop="code">
+            <el-input v-model="emailForm.code" maxlength="8" :placeholder="t('auth.codePlaceholder')" @keyup.enter="submitEmail" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="emailSubmitting" @click="submitEmail">{{ t('auth.loginSubmit') }}</el-button>
             <el-button @click="router.push('/register')">{{ t('auth.registerSubmit') }}</el-button>
           </el-form-item>
         </el-form>

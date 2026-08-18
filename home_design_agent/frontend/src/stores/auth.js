@@ -25,6 +25,11 @@ export const useAuthStore = defineStore('auth', () => {
     return user.value
   }
 
+  async function emailLogin(data) {
+    user.value = await api.emailLogin(data)
+    return user.value
+  }
+
   async function register(data) {
     return api.register(data)
   }
@@ -37,5 +42,5 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  return { user, fetchMe, login, phoneLogin, register, logout }
+  return { user, fetchMe, login, phoneLogin, emailLogin, register, logout }
 })

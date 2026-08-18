@@ -44,6 +44,16 @@ export const useAccountStore = defineStore('account', () => {
     return profile.value
   }
 
+  async function sendEmailBindCode(email) {
+    return api.sendEmailBindCode(email)
+  }
+
+  async function bindEmail(data) {
+    await api.bindEmail(data)
+    profile.value = await api.getProfile()
+    return profile.value
+  }
+
   return {
     profile,
     loading,
@@ -54,5 +64,7 @@ export const useAccountStore = defineStore('account', () => {
     confirmPasswordReset,
     sendPhoneBindCode,
     bindPhone,
+    sendEmailBindCode,
+    bindEmail,
   }
 })

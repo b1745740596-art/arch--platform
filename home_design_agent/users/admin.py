@@ -1,6 +1,11 @@
 from django.contrib import admin
 
-from .models import PasswordResetToken, SmsVerificationCode, UserProfile
+from .models import (
+    EmailVerificationCode,
+    PasswordResetToken,
+    SmsVerificationCode,
+    UserProfile,
+)
 
 
 @admin.register(UserProfile)
@@ -27,4 +32,12 @@ class SmsVerificationCodeAdmin(admin.ModelAdmin):
     list_display = ('phone', 'purpose', 'attempts', 'expires_at', 'used_at', 'created_at')
     list_filter = ('purpose', 'used_at')
     search_fields = ('phone',)
+    readonly_fields = ('code_hash', 'expires_at', 'attempts', 'used_at', 'created_at')
+
+
+@admin.register(EmailVerificationCode)
+class EmailVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ('email', 'purpose', 'attempts', 'expires_at', 'used_at', 'created_at')
+    list_filter = ('purpose', 'used_at')
+    search_fields = ('email',)
     readonly_fields = ('code_hash', 'expires_at', 'attempts', 'used_at', 'created_at')
