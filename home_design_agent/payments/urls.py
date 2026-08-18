@@ -20,5 +20,6 @@ urlpatterns = [
     path('webhook/alipay/', views.alipay_webhook, name='alipay-webhook'),
     path('admin/orders/', views.AdminOrderListView.as_view(), name='admin-order-list'),
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin-stats'),
+    path('admin/diagnostics/', views.AdminDiagnosticsView.as_view(), name='admin-diagnostics'),
     path('admin/orders/<int:pk>/mark-paid/', views.AdminMarkPaidView.as_view(), name='admin-mark-paid'),
 ]

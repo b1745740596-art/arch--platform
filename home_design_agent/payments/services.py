@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import importlib.util
 from datetime import timedelta
 
 from django.conf import settings
@@ -25,6 +26,12 @@ class InsufficientCreditsError(APIException):
     status_code = 402
     default_detail = '生成额度不足，请先充值。'
     default_code = 'insufficient_credits'
+
+
+class PaymentProviderError(APIException):
+    status_code = 503
+    default_detail = '支付渠道暂时不可用，请稍后再试。'
+    default_code = 'payment_provider_error'
 
 
 def _lock_profile(user):
@@ -116,10 +123,14 @@ def create_payment_order(user, plan: PricingPlan, provider_name: str, request):
     )
     try:
         payload = provider.create_payment(order, request)
-    except Exception:
+    except PaymentProviderError:
         order.status = PaymentOrder.Status.FAILED
         order.save(update_fields=['status', 'updated_at'])
         raise
+    except Exception as exc:
+        order.status = PaymentOrder.Status.FAILED
+        order.save(update_fields=['status', 'updated_at'])
+        raise PaymentProviderError(str(exc)) from exc
 
     order.provider_reference = payload.get('reference') or ''
     order.provider_response = payload
@@ -230,5 +241,57 @@ def get_admin_stats():
              'amount_cents': row['amount_cents'] or 0, 'order_count': row['order_count']}
             for row in by_provider
         ],
+        'generated_at': timezone.now(),
+    }
+
+
+def _package_installed(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def get_payment_diagnostics(request=None):
+    """支付链路自检：报告运行模式、依赖与各渠道密钥配置情况。"""
+    wechat_ready = all((
+        settings.PAYMENT_WECHAT_APP_ID,
+        settings.PAYMENT_WECHAT_MCH_ID,
+        settings.PAYMENT_WECHAT_SERIAL_NO,
+        settings.PAYMENT_WECHAT_PRIVATE_KEY,
+        settings.PAYMENT_WECHAT_API_V3_KEY,
+        settings.PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY,
+    ))
+    alipay_ready = all((
+        settings.PAYMENT_ALIPAY_APP_ID,
+        settings.PAYMENT_ALIPAY_PRIVATE_KEY,
+        settings.PAYMENT_ALIPAY_PUBLIC_KEY,
+    ))
+    stripe_ready = bool(settings.PAYMENT_STRIPE_SECRET_KEY)
+
+    def _abs(path):
+        return request.build_absolute_uri(path) if request else path
+
+    return {
+        'payment_mode': settings.PAYMENT_MODE,
+        'free_credits': settings.PAYMENT_FREE_CREDITS,
+        'plans_count': PricingPlan.objects.filter(is_active=True).count(),
+        'webhook_urls': {
+            'stripe': _abs('/api/payments/webhook/stripe/'),
+            'wechat': _abs('/api/payments/webhook/wechat/'),
+            'alipay': _abs('/api/payments/webhook/alipay/'),
+        },
+        'providers': {
+            'stripe': {
+                'configured': stripe_ready,
+                'package_installed': _package_installed('stripe'),
+                'currency': settings.PAYMENT_STRIPE_CURRENCY,
+            },
+            'wechat': {
+                'configured': wechat_ready,
+                'package_installed': _package_installed('httpx') and _package_installed('cryptography'),
+            },
+            'alipay': {
+                'configured': alipay_ready,
+                'package_installed': _package_installed('httpx') and _package_installed('cryptography'),
+            },
+        },
         'generated_at': timezone.now(),
     }

@@ -21,6 +21,7 @@ from .services import (
     balance_for_user,
     create_payment_order,
     get_admin_stats,
+    get_payment_diagnostics,
     mark_order_paid,
     resolve_webhook,
 )
@@ -130,6 +131,15 @@ class AdminStatsView(APIView):
 
     def get(self, request):
         return Response(get_admin_stats())
+
+
+class AdminDiagnosticsView(APIView):
+    """支付链路自检：检查运行模式、依赖与渠道密钥配置，供上线前排查。"""
+
+    permission_classes = [IsStaffOrSuperuser]
+
+    def get(self, request):
+        return Response(get_payment_diagnostics(request))
 
 
 class AdminMarkPaidView(APIView):

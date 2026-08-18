@@ -159,6 +159,7 @@ export const api = {
   mockPayOrder: (id) => paymentsClient.post(`/orders/${id}/mock_pay/`),
   listAdminPaymentOrders: (params) => paymentsClient.get('/admin/orders/', { params }),
   getAdminPaymentStats: () => paymentsClient.get('/admin/stats/'),
+  getAdminPaymentDiagnostics: () => paymentsClient.get('/admin/diagnostics/'),
   adminMarkPaid: (id, data) => paymentsClient.post(`/admin/orders/${id}/mark-paid/`, data),
 }
 

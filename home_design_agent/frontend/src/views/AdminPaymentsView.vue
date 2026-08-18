@@ -7,6 +7,7 @@ import { api } from '@/api/client'
 const { t } = useI18n()
 const stats = ref(null)
 const orders = ref([])
+const diagnostics = ref(null)
 const loading = ref(false)
 const trendEl = ref()
 const providerEl = ref()
@@ -34,12 +35,14 @@ function formatDate(value) {
 async function loadData() {
   loading.value = true
   try {
-    const [statsData, orderData] = await Promise.all([
+    const [statsData, orderData, diagnosticsData] = await Promise.all([
       api.getAdminPaymentStats(),
       api.listAdminPaymentOrders(),
+      api.getAdminPaymentDiagnostics(),
     ])
     stats.value = statsData
     orders.value = orderData
+    diagnostics.value = diagnosticsData
     await renderCharts()
   } catch (e) {
     ElMessage.error(t('adminPayments.loadFailed', { msg: extractError(e) }))
@@ -171,6 +174,34 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <el-card v-if="diagnostics" shadow="never" class="diag-card">
+      <template #header><b>{{ t('adminPayments.diagnosticsTitle') }}</b></template>
+      <div class="diag-head">
+        <el-tag :type="diagnostics.payment_mode === 'live' ? 'success' : 'warning'" effect="light">
+          {{ t('adminPayments.modeLabel') }}：{{ diagnostics.payment_mode }}
+        </el-tag>
+        <span>{{ t('adminPayments.plansCount', { n: diagnostics.plans_count }) }}</span>
+      </div>
+      <div class="diag-providers">
+        <div v-for="(info, name) in diagnostics.providers" :key="name" class="diag-provider">
+          <b>{{ name }}</b>
+          <el-tag :type="info.configured ? 'success' : 'danger'" size="small">
+            {{ info.configured ? t('adminPayments.configured') : t('adminPayments.notConfigured') }}
+          </el-tag>
+          <el-tag :type="info.package_installed ? 'success' : 'warning'" size="small">
+            {{ info.package_installed ? t('adminPayments.packageInstalled') : t('adminPayments.packageMissing') }}
+          </el-tag>
+        </div>
+      </div>
+      <div class="diag-webhooks">
+        <p>{{ t('adminPayments.webhookUrls') }}</p>
+        <div v-for="(url, name) in diagnostics.webhook_urls" :key="name">
+          <span class="diag-webhook-name">{{ name }}</span>
+          <code>{{ url }}</code>
+        </div>
+      </div>
+    </el-card>
+
     <div class="chart-grid">
       <el-card shadow="never" class="chart-card">
         <template #header><b>{{ t('adminPayments.trendTitle') }}</b></template>
@@ -235,6 +266,15 @@ onBeforeUnmount(() => {
 .summary-card.primary { background: linear-gradient(135deg, #2f6b4f 0%, #204b37 100%); border: 0; }
 .summary-card.primary span { color: rgba(255,255,255,0.72); }
 .summary-card.primary b { color: #fff; }
+.diag-card { margin: 16px 0; }
+.diag-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; color: var(--brand-muted); font-size: 13px; }
+.diag-providers { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.diag-provider { display: flex; align-items: center; gap: 8px; }
+.diag-provider b { text-transform: uppercase; letter-spacing: 0.4px; }
+.diag-webhooks p { margin: 0 0 8px; color: var(--brand-muted); font-size: 13px; }
+.diag-webhooks div { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; }
+.diag-webhook-name { width: 60px; color: var(--brand-muted); }
+.diag-webhooks code { color: var(--brand-green-deep); word-break: break-all; }
 .chart-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; }
 .chart-card { min-width: 0; }
 .chart { width: 100%; }
