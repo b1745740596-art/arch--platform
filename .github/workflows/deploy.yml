@@ -69,8 +69,10 @@ jobs:
           ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" bash -se <<EOF
             set -euo pipefail
+            REPO_ROOT="$(dirname "$DEPLOY_PATH")"
+            git -C "$REPO_ROOT" fetch origin --quiet
+            git -C "$REPO_ROOT" reset --hard origin/main
             cd "$DEPLOY_PATH"
-            git pull --ff-only
             docker compose up -d --build
             docker compose ps
           EOF
