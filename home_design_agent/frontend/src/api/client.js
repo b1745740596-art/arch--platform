@@ -164,6 +164,9 @@ export const api = {
   createAdminUser: (data) => usersClient.post('/admin/users/', data),
   updateAdminUser: (id, data) => usersClient.patch(`/admin/users/${id}/`, data),
   deleteAdminUser: (id) => usersClient.delete(`/admin/users/${id}/`),
+  getAdminUserCredits: (id) => paymentsClient.get(`/admin/users/${id}/credits/`),
+  setAdminUserCredits: (id, data) => paymentsClient.post(`/admin/users/${id}/credits/`, data),
+  adjustAdminUserCredits: (id, data) => paymentsClient.post(`/admin/users/${id}/credits/adjust/`, data),
   // 支付与额度
   listPlans: () => paymentsClient.get('/plans/'),
   getBalance: () => paymentsClient.get('/balance/'),
