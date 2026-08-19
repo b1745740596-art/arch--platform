@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppUpdateStore } from '@/stores/appUpdate'
 import { appDefaultRoute, isNativeApp } from '@/utils/app'
 import AppSettingsDialog from '@/components/AppSettingsDialog.vue'
+import AppChatDialog from '@/components/AppChatDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +16,7 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const appUpdate = useAppUpdateStore()
 const settingsVisible = ref(false)
+const chatVisible = ref(false)
 let autoUpdatePromptShown = false
 
 const isApp = computed(() => isNativeApp())
@@ -198,12 +200,29 @@ watch(
       <nav v-if="isApp" class="app-tabbar" aria-label="App navigation">
         <router-link
           class="tabbar-item"
-          :class="{ active: route.path === '/my-home' }"
+          :class="{ active: route.path === '/my-home' && route.query.tab !== 'orders' }"
           to="/my-home"
         >
           <el-icon><House /></el-icon>
           <span>{{ t('nav.myHome') }}</span>
         </router-link>
+        <router-link
+          class="tabbar-item"
+          :class="{ active: route.path === '/my-home' && route.query.tab === 'orders' }"
+          :to="{ path: '/my-home', query: { tab: 'orders' } }"
+        >
+          <el-icon><ShoppingCart /></el-icon>
+          <span>{{ t('myHome.tabOrders') }}</span>
+        </router-link>
+        <button
+          type="button"
+          class="tabbar-item"
+          :class="{ active: chatVisible }"
+          @click="chatVisible = true"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+          <span>{{ t('nav.chat') }}</span>
+        </button>
         <button
           type="button"
           class="tabbar-item"
@@ -226,6 +245,7 @@ watch(
       </footer>
 
       <AppSettingsDialog v-model="settingsVisible" />
+      <AppChatDialog v-model="chatVisible" />
     </div>
   </el-config-provider>
 </template>
@@ -503,7 +523,7 @@ watch(
   bottom: 0;
   z-index: 60;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 2px;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.94);

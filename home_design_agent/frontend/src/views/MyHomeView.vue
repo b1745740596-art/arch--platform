@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import StudioView from './StudioView.vue'
@@ -13,6 +14,7 @@ import { isNativeApp } from '@/utils/app'
 
 const { t } = useI18n()
 const term = useTerm()
+const route = useRoute()
 const studio = useStudioStore()
 
 const tab = ref('studio')
@@ -29,9 +31,7 @@ const isApp = computed(() => isNativeApp())
 const TABS = [
   { key: 'studio', icon: 'Grid', labelKey: 'myHome.tabStudio' },
   { key: 'report', icon: 'Document', labelKey: 'myHome.tabReport' },
-  { key: 'orders', icon: 'ShoppingCart', labelKey: 'myHome.tabOrders' },
-  { key: 'requirement', icon: 'ChatDotRound', labelKey: 'nav.requirement' },
-  { key: 'intake', icon: 'UploadFilled', labelKey: 'nav.intake' },
+  { key: 'requirement-info', icon: 'EditPen', labelKey: 'myHome.tabRequirementInfo' },
 ]
 
 const tierBudget = {
@@ -309,11 +309,26 @@ function openWorkbench() {
   tab.value = 'studio'
 }
 
+function applyRouteTab() {
+  const value = route.query.tab
+  if (value === 'orders' || value === 'report' || value === 'requirement-info') {
+    tab.value = value
+  } else {
+    tab.value = 'studio'
+  }
+}
+
 onMounted(() => {
+  applyRouteTab()
   studio.startSession()
   loadReports()
   loadOrders()
 })
+
+watch(
+  () => route.query.tab,
+  () => applyRouteTab(),
+)
 </script>
 
 <template>
@@ -550,12 +565,11 @@ onMounted(() => {
       </el-card>
     </div>
 
-    <div v-show="tab === 'requirement'" class="tab-panel">
-      <RequirementView />
-    </div>
-
-    <div v-show="tab === 'intake'" class="tab-panel">
-      <IntakeView />
+    <div v-show="tab === 'requirement-info'" class="tab-panel">
+      <div class="requirement-info-stack">
+        <RequirementView />
+        <IntakeView />
+      </div>
     </div>
   </div>
 </template>
@@ -681,6 +695,12 @@ onMounted(() => {
 }
 
 .tab-panel { min-width: 0; }
+
+.requirement-info-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
 .report-layout {
   display: grid;
