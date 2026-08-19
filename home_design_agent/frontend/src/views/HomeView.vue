@@ -104,7 +104,7 @@ const showcase = [
           </el-button>
           <el-button
             tag="a"
-            href="https://github.com/b1745740596-art/arch--platform/releases/download/apk/app-debug.apk"
+            href="/media/app/arch-ai.apk"
             target="_blank"
             class="download-cta"
             size="large"
