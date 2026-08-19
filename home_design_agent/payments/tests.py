@@ -142,3 +142,55 @@ class AdminStatsTests(APITestCase):
         )
         self.assertEqual(response.data['by_provider'][0]['provider'], 'alipay')
         self.assertEqual(len(response.data['daily_revenue']), 14)
+
+
+class AdminCreditTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='credit-user', password='secret123')
+        self.staff = User.objects.create_user(
+            username='credit-admin', password='secret123', is_staff=True,
+        )
+        self.url = f'/api/payments/admin/users/{self.user.pk}/credits/'
+        self.adjust_url = f'/api/payments/admin/users/{self.user.pk}/credits/adjust/'
+
+    def test_requires_staff(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.post(self.url, {'free_credits': 3}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_set_credits(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            self.url,
+            {'free_credits': 3, 'purchased_credits': 12, 'note': '测试设置'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['free_credits'], 3)
+        self.assertEqual(response.data['purchased_credits'], 12)
+        self.assertTrue(
+            CreditTransaction.objects.filter(
+                user=self.user, kind=CreditTransaction.Kind.ADJUST,
+            ).exists()
+        )
+
+    def test_adjust_credits(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            self.adjust_url,
+            {'free_delta': -2, 'purchased_delta': 6},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['free_credits'], 3)
+        self.assertEqual(response.data['purchased_credits'], 6)
+        self.assertEqual(response.data['total_credits'], 9)
+
+    def test_adjust_rejects_negative_balance(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            self.adjust_url,
+            {'free_delta': -99},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

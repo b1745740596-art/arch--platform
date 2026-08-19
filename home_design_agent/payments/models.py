@@ -115,6 +115,7 @@ class CreditTransaction(models.Model):
         PURCHASE = 'purchase', '充值入账'
         CONSUME = 'consume', '生成消耗'
         REFUND = 'refund', '失败退回'
+        ADJUST = 'adjust', '管理员调整'
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

@@ -111,6 +111,52 @@ def refund_generation_credit(user, free_used: int, purchased_used: int, note: st
         )
 
 
+def _write_adjust_transaction(user, profile, free_delta, purchased_delta, note):
+    total_delta = free_delta + purchased_delta
+    if total_delta == 0:
+        return profile
+    CreditTransaction.objects.create(
+        user=user,
+        kind=CreditTransaction.Kind.ADJUST,
+        credits=total_delta,
+        balance_after=profile.free_credits + profile.purchased_credits,
+        note=note,
+    )
+    return profile
+
+
+def adjust_user_credits(user, free_delta: int = 0, purchased_delta: int = 0, note: str = '管理员调整额度'):
+    """按增量调整用户免费/充值额度，可为负数，并记录流水。"""
+    with transaction.atomic():
+        profile = _lock_profile(user)
+        new_free = profile.free_credits + free_delta
+        new_purchased = profile.purchased_credits + purchased_delta
+        if new_free < 0 or new_purchased < 0:
+            raise ValueError('调整后额度不能为负数。')
+        profile.free_credits = new_free
+        profile.purchased_credits = new_purchased
+        profile.save(update_fields=['free_credits', 'purchased_credits', 'updated_at'])
+        return _write_adjust_transaction(user, profile, free_delta, purchased_delta, note)
+
+
+def set_user_credits(user, free_credits: int = None, purchased_credits: int = None, note: str = '管理员设置额度'):
+    """按绝对值设置用户免费/充值额度，并记录流水。"""
+    if free_credits is None and purchased_credits is None:
+        raise ValueError('至少需要设置免费额度或充值额度。')
+    with transaction.atomic():
+        profile = _lock_profile(user)
+        free_delta = (free_credits - profile.free_credits) if free_credits is not None else 0
+        purchased_delta = (purchased_credits - profile.purchased_credits) if purchased_credits is not None else 0
+        if free_credits is not None and free_credits < 0:
+            raise ValueError('免费额度不能为负数。')
+        if purchased_credits is not None and purchased_credits < 0:
+            raise ValueError('充值额度不能为负数。')
+        profile.free_credits = free_credits if free_credits is not None else profile.free_credits
+        profile.purchased_credits = purchased_credits if purchased_credits is not None else profile.purchased_credits
+        profile.save(update_fields=['free_credits', 'purchased_credits', 'updated_at'])
+        return _write_adjust_transaction(user, profile, free_delta, purchased_delta, note)
+
+
 def create_payment_order(user, plan: PricingPlan, provider_name: str, request):
     """创建待支付订单并调用渠道生成支付参数。"""
     provider = get_provider(provider_name)

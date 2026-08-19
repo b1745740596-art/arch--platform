@@ -24,4 +24,6 @@ urlpatterns = [
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin-stats'),
     path('admin/diagnostics/', views.AdminDiagnosticsView.as_view(), name='admin-diagnostics'),
     path('admin/orders/<int:pk>/mark-paid/', views.AdminMarkPaidView.as_view(), name='admin-mark-paid'),
+    path('admin/users/<int:pk>/credits/', views.AdminUserCreditView.as_view(), name='admin-user-credits'),
+    path('admin/users/<int:pk>/credits/adjust/', views.AdminUserCreditAdjustView.as_view(), name='admin-user-credits-adjust'),
 ]

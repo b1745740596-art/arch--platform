@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
@@ -16,15 +17,21 @@ from .serializers import (
     CreditTransactionSerializer,
     PaymentOrderSerializer,
     PricingPlanSerializer,
+    UserCreditAdjustSerializer,
+    UserCreditSetSerializer,
 )
 from .services import (
+    adjust_user_credits,
     balance_for_user,
     create_payment_order,
     get_admin_stats,
     get_payment_diagnostics,
     mark_order_paid,
     resolve_webhook,
+    set_user_credits,
 )
+
+User = get_user_model()
 
 
 class IsStaffOrSuperuser(IsAuthenticated):
@@ -170,6 +177,64 @@ class AdminMarkPaidView(APIView):
             raise ValidationError('该订单已支付。')
         order = mark_order_paid(order, reference=request.data.get('reference', '') or 'manual')
         return Response(PaymentOrderSerializer(order).data)
+
+
+class AdminUserCreditView(APIView):
+    """后台设置用户额度（绝对值），并记录额度流水。"""
+
+    permission_classes = [IsStaffOrSuperuser]
+
+    def _get_user(self, pk):
+        try:
+            return User.objects.get(pk=pk, is_active=True)
+        except User.DoesNotExist:
+            raise NotFound('用户不存在。')
+
+    def get(self, request, pk):
+        user = self._get_user(pk)
+        return Response(balance_for_user(user))
+
+    def post(self, request, pk):
+        user = self._get_user(pk)
+        serializer = UserCreditSetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            set_user_credits(
+                user,
+                free_credits=serializer.validated_data.get('free_credits'),
+                purchased_credits=serializer.validated_data.get('purchased_credits'),
+                note=serializer.validated_data.get('note') or '管理员设置额度',
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+        return Response(balance_for_user(user))
+
+
+class AdminUserCreditAdjustView(APIView):
+    """后台按增量调整用户额度（可为负数），并记录额度流水。"""
+
+    permission_classes = [IsStaffOrSuperuser]
+
+    def _get_user(self, pk):
+        try:
+            return User.objects.get(pk=pk, is_active=True)
+        except User.DoesNotExist:
+            raise NotFound('用户不存在。')
+
+    def post(self, request, pk):
+        user = self._get_user(pk)
+        serializer = UserCreditAdjustSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            adjust_user_credits(
+                user,
+                free_delta=serializer.validated_data.get('free_delta') or 0,
+                purchased_delta=serializer.validated_data.get('purchased_delta') or 0,
+                note=serializer.validated_data.get('note') or '管理员调整额度',
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+        return Response(balance_for_user(user))
 
 
 @csrf_exempt
