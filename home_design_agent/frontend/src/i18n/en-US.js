@@ -25,6 +25,12 @@ export default {
     send: 'Send',
     comingSoon: 'Chat is coming soon',
   },
+  community: {
+    title: 'Inspiration Community',
+    furniture: 'Furniture',
+    designer: 'Designer',
+    contractor: 'Renovation',
+  },
   plan: {
     recordsTitle: 'Records',
     stepUpload: 'Upload',
@@ -40,6 +46,7 @@ export default {
     addMore: 'Add',
     uploadLimit: 'Upload up to {max} images',
     batchAdded: '{count} plans generated',
+    imageCount: 'Uploaded images',
     viewDesigner: 'View designer',
     viewContractor: 'View contractor',
     unnamed: 'Unnamed room',

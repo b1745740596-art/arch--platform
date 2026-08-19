@@ -8,6 +8,7 @@ import { useStudioStore } from '@/stores/studio'
 import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
 import { validateImageFile } from '@/utils/validation'
+import CommunityFeed from '@/components/CommunityFeed.vue'
 
 const router = useRouter()
 const studio = useStudioStore()
@@ -498,12 +499,15 @@ async function packageRecords() {
 
         <div v-show="step === 3" class="step-panel">
           <div class="review-card">
-            <img v-if="draft.previewUrl" :src="draft.previewUrl" alt="preview" />
+            <div v-if="draft.images.length" class="review-thumbs">
+              <img v-for="image in draft.images" :key="image.url" :src="image.url" alt="" />
+            </div>
             <div class="review-line"><span>{{ t('win.roomType') }}</span><b>{{ term(draft.room_type) }}</b></div>
             <div class="review-line"><span>{{ t('win.style') }}</span><b>{{ term(draft.style) }}</b></div>
             <div class="review-line"><span>{{ t('win.budgetTier') }}</span><b>{{ term(draft.budget_tier) }}</b></div>
             <div class="review-line"><span>{{ t('win.requirement') }}</span><b>{{ draft.requirement || t('common.dash') }}</b></div>
             <div class="review-line"><span>{{ t('win.diverge') }}</span><b>{{ draft.moduleCodes.length }} / {{ studio.maxModules }}</b></div>
+            <div class="review-line"><span>{{ t('plan.imageCount') }}</span><b>{{ draft.images.length }}</b></div>
           </div>
           <el-button type="primary" class="generate-btn" :loading="submitting" @click="generate">
             <el-icon><MagicStick /></el-icon>
@@ -637,6 +641,8 @@ async function packageRecords() {
         </div>
       </section>
     </section>
+
+    <CommunityFeed />
   </div>
 </template>
 
@@ -853,12 +859,34 @@ async function packageRecords() {
   background: var(--brand-green-soft);
 }
 
-.review-card img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; }
+.review-thumbs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.review-thumbs img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 9px;
+}
+
 .review-line { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
 .review-line span { color: var(--brand-muted); }
 .review-line b { text-align: right; }
 
-.step-actions { display: flex; justify-content: space-between; margin-top: 16px; }
+.step-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 16px -16px -16px;
+  padding: 10px 16px;
+  background: var(--app-surface);
+  border-top: 1px solid var(--app-border);
+}
 .generate-btn { width: 100%; margin-top: 8px; }
 
 .record-detail {

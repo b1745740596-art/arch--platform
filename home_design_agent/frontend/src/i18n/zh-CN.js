@@ -25,6 +25,12 @@ export default {
     send: '发送',
     comingSoon: '聊天功能即将上线',
   },
+  community: {
+    title: '灵感社区',
+    furniture: '家具推荐',
+    designer: '设计师推荐',
+    contractor: '施工经验',
+  },
   plan: {
     recordsTitle: '生成记录',
     stepUpload: '上传照片',
@@ -40,6 +46,7 @@ export default {
     addMore: '添加',
     uploadLimit: '最多上传 {max} 张图片',
     batchAdded: '已生成 {count} 个方案',
+    imageCount: '已上传图片',
     viewDesigner: '查看设计师',
     viewContractor: '查看施工队',
     unnamed: '未命名空间',
