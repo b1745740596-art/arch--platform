@@ -147,11 +147,11 @@ home_design_agent/
   账号设置页也会展示当前免费/已购额度
 - 管理侧：`/admin/payments`（顶部导航「营收看板」）展示营业额趋势、渠道占比与收款订单，
   可手动确认待支付订单
-- 收款渠道：**Stripe**（国际信用卡）、**微信支付**（Native 扫码）、**支付宝**（当面付扫码）
+- 收款渠道：**Stripe**（国际信用卡）
 - 后端模块：`payments/`，模型为 `PricingPlan`（套餐）、`PaymentOrder`（收款订单）、
   `CreditTransaction`（额度流水）；营业额与收款列表在
   `/admin/payments/paymentorder/` 和 `GET /api/payments/admin/stats/`
-- 支付状态回调：`POST /api/payments/webhook/{stripe|wechat|alipay}/`
+- 支付状态回调：`POST /api/payments/webhook/stripe/`
 
 本地默认 `PAYMENT_MODE=mock`，下单后点「模拟支付成功」即可入账，不发真实扣款。
 上线前在 `.env` 切到 `PAYMENT_MODE=live` 并配置对应渠道密钥（见 `.env.example`），
