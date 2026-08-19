@@ -251,20 +251,7 @@ def _package_installed(name: str) -> bool:
 
 
 def get_payment_diagnostics(request=None):
-    """支付链路自检：报告运行模式、依赖与各渠道密钥配置情况。"""
-    wechat_ready = all((
-        settings.PAYMENT_WECHAT_APP_ID,
-        settings.PAYMENT_WECHAT_MCH_ID,
-        settings.PAYMENT_WECHAT_SERIAL_NO,
-        settings.PAYMENT_WECHAT_PRIVATE_KEY,
-        settings.PAYMENT_WECHAT_API_V3_KEY,
-        settings.PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY,
-    ))
-    alipay_ready = all((
-        settings.PAYMENT_ALIPAY_APP_ID,
-        settings.PAYMENT_ALIPAY_PRIVATE_KEY,
-        settings.PAYMENT_ALIPAY_PUBLIC_KEY,
-    ))
+    """支付链路自检：报告运行模式、依赖与 Stripe 密钥配置情况。"""
     stripe_ready = bool(settings.PAYMENT_STRIPE_SECRET_KEY)
 
     def _abs(path):
@@ -272,27 +259,16 @@ def get_payment_diagnostics(request=None):
 
     return {
         'payment_mode': settings.PAYMENT_MODE,
-        'payment_qr_mode': settings.PAYMENT_QR_MODE,
         'free_credits': settings.PAYMENT_FREE_CREDITS,
         'plans_count': PricingPlan.objects.filter(is_active=True).count(),
         'webhook_urls': {
             'stripe': _abs('/api/payments/webhook/stripe/'),
-            'wechat': _abs('/api/payments/webhook/wechat/'),
-            'alipay': _abs('/api/payments/webhook/alipay/'),
         },
         'providers': {
             'stripe': {
                 'configured': stripe_ready,
                 'package_installed': _package_installed('stripe'),
                 'currency': settings.PAYMENT_STRIPE_CURRENCY,
-            },
-            'wechat': {
-                'configured': wechat_ready,
-                'package_installed': _package_installed('httpx') and _package_installed('cryptography'),
-            },
-            'alipay': {
-                'configured': alipay_ready,
-                'package_installed': _package_installed('httpx') and _package_installed('cryptography'),
             },
         },
         'generated_at': timezone.now(),
