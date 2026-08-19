@@ -648,13 +648,21 @@ async function packageRecords() {
 <style scoped>
 .plan-workspace {
   display: block;
+  position: relative;
+}
+
+.plan-workspace :deep(.community-feed) {
+  position: relative;
+  z-index: 2;
+  margin-bottom: -72px;
 }
 
 .plan-main {
+  position: relative;
   border: 1px solid var(--app-border);
   border-radius: 18px;
   background: var(--app-surface);
-  padding: 16px;
+  padding: 84px 16px 16px;
 }
 
 .records-empty {
