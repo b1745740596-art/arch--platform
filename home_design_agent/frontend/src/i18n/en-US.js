@@ -40,6 +40,8 @@ export default {
     stepReview: 'Generate',
     nameLabel: 'Name this plan',
     namePlaceholder: 'e.g. Living room renovation plan',
+    startDesignCta: 'Tap here to start designing your home',
+    startDesignHint: 'Upload a bare-shell photo and get an AI render',
     packTitle: 'Random Inspiration Pack',
     packHint: 'After the first image is generated, this project locks the same pack for consistent style.',
     packLocked: 'This project has locked its inspiration pack for a consistent style.',

@@ -40,6 +40,8 @@ export default {
     stepReview: '生成方案',
     nameLabel: '给这个计划起个名字',
     namePlaceholder: '例如：我家客厅改造方案',
+    startDesignCta: '点击这里，开始设计您的家',
+    startDesignHint: '上传毛坯照片，AI 生成装修效果图',
     packTitle: '随机灵感包',
     packHint: '首张图生成后，本项目将锁定使用同一灵感包，保持风格一致。',
     packLocked: '本项目已锁定灵感包，后续图片将沿用同一风格。',

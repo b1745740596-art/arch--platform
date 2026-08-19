@@ -434,7 +434,11 @@ watch(
         :class="{ expanded: studioExpanded }"
         @click="studioExpanded = !studioExpanded"
       >
-        <span>{{ t('myHome.tabStudio') }}</span>
+        <span class="studio-cta-icon"><el-icon><UploadFilled /></el-icon></span>
+        <span class="studio-cta-copy">
+          <b>{{ t('plan.startDesignCta') }}</b>
+          <small>{{ t('plan.startDesignHint') }}</small>
+        </span>
         <el-icon><ArrowDown v-if="!studioExpanded" /><ArrowUp v-else /></el-icon>
       </button>
       <div v-show="studioExpanded" class="studio-collapse-content">
@@ -855,17 +859,48 @@ watch(
 .studio-collapse-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 16px 14px;
   border: 1px solid var(--app-border);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--app-surface);
   color: var(--brand-green-deep);
   font: inherit;
-  font-size: 14px;
-  font-weight: 800;
   cursor: pointer;
+}
+
+.studio-cta-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--brand-green-soft);
+  color: var(--brand-green);
+  font-size: 22px;
+}
+
+.studio-cta-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.studio-cta-copy b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--brand-green-deep);
+}
+
+.studio-cta-copy small {
+  font-size: 12px;
+  color: var(--brand-muted);
+  line-height: 1.5;
 }
 
 .studio-collapse-content {
