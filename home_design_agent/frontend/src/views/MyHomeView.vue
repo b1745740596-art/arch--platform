@@ -806,7 +806,7 @@ watch(
 /* App 端：去掉营销头部后，让核心生成区直接顶到首屏，
    分段导航更像滴滴 App 的首屏快捷入口。 */
 .my-home.is-app {
-  gap: 12px;
+  gap: 0;
 }
 
 .my-home.is-app .segmented.is-app {
