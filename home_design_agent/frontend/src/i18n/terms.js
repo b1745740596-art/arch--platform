@@ -5,6 +5,7 @@ const TERMS = {
   客厅: 'Living room',
   主卧: 'Master bedroom',
   次卧: 'Second bedroom',
+  衣帽间: 'Walk-in closet',
   厨房: 'Kitchen',
   卫生间: 'Bathroom',
   书房: 'Study',

@@ -22,7 +22,7 @@ const form = reactive({
 })
 
 const styles = ['现代简约', '现代轻奢', '意式极简', '北欧', '中式', '日式']
-const rooms = ['客厅', '主卧', '次卧', '厨房', '卫生间', '书房', '餐厅']
+const rooms = ['客厅', '主卧', '次卧', '衣帽间', '厨房', '卫生间', '书房', '餐厅']
 const tiers = ['经济', '品质', '高端']
 
 function onFileChange(file) {

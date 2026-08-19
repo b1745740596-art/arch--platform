@@ -28,7 +28,7 @@ export const STATUS_META = {
 
 // 后端 options 接口不可用时的兜底枚举，保证页面仍可用
 export const FALLBACK_OPTIONS = {
-  room_types: ['客厅', '主卧', '次卧', '厨房', '卫生间', '书房', '餐厅'],
+  room_types: ['客厅', '主卧', '次卧', '衣帽间', '厨房', '卫生间', '书房', '餐厅'],
   styles: ['现代简约', '现代轻奢', '意式极简', '北欧', '中式', '日式'],
   budget_tiers: ['经济', '品质', '高端'],
   modules: [],

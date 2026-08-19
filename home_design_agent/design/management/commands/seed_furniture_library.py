@@ -63,7 +63,7 @@ GROUPS = [
     {
         'category': Furniture.Category.CABINET,
         'keyword': 'cabinet,furniture',
-        'rooms': ['客厅', '餐厅', '卧室', '书房'],
+        'rooms': ['客厅', '餐厅', '卧室', '衣帽间', '书房'],
         'brands': ['欧派', '索菲亚', '尚品宅配', '志邦', '好莱客'],
         'price_min': 600, 'price_max': 20000,
         'styles': ['现代简约', '原木'],
@@ -78,7 +78,7 @@ GROUPS = [
     {
         'category': Furniture.Category.LIGHT,
         'keyword': 'lamp,lighting',
-        'rooms': ['客厅', '餐厅', '主卧', '次卧', '书房'],
+        'rooms': ['客厅', '餐厅', '主卧', '次卧', '衣帽间', '书房'],
         'brands': ['雷士', '欧普', '飞利浦', '松下', '月影'],
         'price_min': 150, 'price_max': 4000,
         'styles': ['现代简约', '北欧'],
@@ -116,7 +116,7 @@ GROUPS = [
     {
         'category': Furniture.Category.DECOR,
         'keyword': 'curtain,decor',
-        'rooms': ['客厅', '卧室', '书房'],
+        'rooms': ['客厅', '卧室', '衣帽间', '书房'],
         'brands': ['宜家', 'ZARA HOME', '摩力克', '罗莱', '网易严选'],
         'price_min': 50, 'price_max': 1500,
         'styles': ['现代简约'],

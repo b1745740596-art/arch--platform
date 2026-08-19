@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from .models import PromptModule
 
 # 前端可选枚举（严格约束的唯一来源）
-ROOM_TYPES = ['客厅', '主卧', '次卧', '厨房', '卫生间', '书房', '餐厅']
+ROOM_TYPES = ['客厅', '主卧', '次卧', '衣帽间', '厨房', '卫生间', '书房', '餐厅']
 STYLES = ['现代简约', '现代轻奢', '意式极简', '北欧', '中式', '日式']
 BUDGET_TIERS = ['经济', '品质', '高端']
 
@@ -25,6 +25,7 @@ ROOM_CATEGORIES = {
     '客厅': ['sofa', 'table', 'cabinet', 'appliance'],
     '主卧': ['bed', 'cabinet', 'table'],
     '次卧': ['bed', 'cabinet', 'table'],
+    '衣帽间': ['cabinet', 'table'],
     '厨房': ['cabinet', 'appliance', 'table'],
     '卫生间': ['cabinet', 'appliance'],
     '书房': ['table', 'cabinet', 'sofa'],
