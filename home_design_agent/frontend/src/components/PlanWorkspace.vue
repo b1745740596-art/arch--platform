@@ -653,13 +653,13 @@ async function packageRecords() {
 
 .plan-workspace :deep(.community-feed) {
   position: relative;
-  z-index: 0;
+  z-index: 2;
   margin: 0;
 }
 
 .plan-main {
   position: relative;
-  z-index: 1;
+  z-index: 0;
   margin-top: -36px;
   border: 1px solid var(--app-border);
   border-radius: 18px;
