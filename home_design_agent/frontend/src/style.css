@@ -1,45 +1,45 @@
 :root {
-  /* iPhone-inspired palette: calm green + warm wood on ivory */
-  --brand-green: #2f6b4f;
-  --brand-green-deep: #204b37;
-  --brand-green-soft: #e7f0ea;
-  --brand-moss: #6b8f6f;
-  --brand-wood: #c89662;
-  --brand-wood-deep: #8c5f33;
-  --brand-wood-soft: #f2e3ce;
-  --brand-ivory: #f6f1e8;
+  /* Clean white + fresh green palette */
+  --brand-green: #23a97c;
+  --brand-green-deep: #12845f;
+  --brand-green-soft: #e7f8f0;
+  --brand-moss: #5fc39c;
+  --brand-wood: #3fce9a;
+  --brand-wood-deep: #1b9a6f;
+  --brand-wood-soft: #e7f8f0;
+  --brand-ivory: #ffffff;
   --brand-ink: #1f2d26;
-  --brand-muted: #68766e;
+  --brand-muted: #697b71;
 
-  --app-bg: linear-gradient(180deg, #f9f6ef 0%, #f2eee4 100%);
-  --app-surface: rgba(255, 255, 255, 0.86);
-  --app-glass: rgba(255, 255, 255, 0.62);
-  --app-border: rgba(47, 107, 79, 0.12);
-  --app-shadow: 0 18px 45px rgba(45, 62, 52, 0.10);
-  --app-shadow-soft: 0 8px 24px rgba(45, 62, 52, 0.08);
+  --app-bg: #ffffff;
+  --app-surface: #ffffff;
+  --app-glass: rgba(255, 255, 255, 0.78);
+  --app-border: rgba(35, 169, 124, 0.14);
+  --app-shadow: 0 18px 45px rgba(35, 90, 70, 0.10);
+  --app-shadow-soft: 0 8px 24px rgba(35, 90, 70, 0.08);
 
   /* Element Plus token override */
-  --el-color-primary: #2f6b4f;
-  --el-color-primary-light-3: #648d77;
-  --el-color-primary-light-5: #96b2a4;
-  --el-color-primary-light-7: #c1d2c8;
-  --el-color-primary-light-8: #d7e2dc;
-  --el-color-primary-light-9: #eef4f0;
-  --el-color-primary-dark-2: #264f3c;
-  --el-color-success: #3c8761;
+  --el-color-primary: #23a97c;
+  --el-color-primary-light-3: #5dcb9f;
+  --el-color-primary-light-5: #8fdcbd;
+  --el-color-primary-light-7: #bcebd7;
+  --el-color-primary-light-8: #d3f3e5;
+  --el-color-primary-light-9: #edfaf5;
+  --el-color-primary-dark-2: #0f8a63;
+  --el-color-success: #23a97c;
   --el-color-warning: #d8a144;
   --el-color-danger: #c15d4d;
   --el-color-error: #c15d4d;
   --el-text-color-primary: #1f2d26;
   --el-text-color-regular: #3b4b41;
-  --el-text-color-secondary: #68766e;
-  --el-border-color: rgba(47, 107, 79, 0.14);
-  --el-border-color-light: rgba(47, 107, 79, 0.10);
-  --el-border-color-lighter: rgba(47, 107, 79, 0.07);
-  --el-fill-color: #f4f1e9;
-  --el-fill-color-light: #f8f6f0;
+  --el-text-color-secondary: #697b71;
+  --el-border-color: rgba(35, 169, 124, 0.16);
+  --el-border-color-light: rgba(35, 169, 124, 0.11);
+  --el-border-color-lighter: rgba(35, 169, 124, 0.08);
+  --el-fill-color: #f7fbf9;
+  --el-fill-color-light: #fbfdfc;
   --el-bg-color: #ffffff;
-  --el-bg-color-page: #f6f1e8;
+  --el-bg-color-page: #ffffff;
   --el-border-radius-base: 12px;
   --el-border-radius-small: 9px;
   --el-border-radius-round: 24px;
@@ -99,9 +99,9 @@ a { color: var(--el-color-primary); text-decoration: none; }
 .el-button:active { transform: scale(0.97); }
 
 .el-button--primary {
-  background: linear-gradient(135deg, #3b7a5b 0%, #2f6b4f 100%);
+  background: linear-gradient(135deg, #35bd8d 0%, #1d9a6f 100%);
   border: none;
-  box-shadow: 0 10px 22px rgba(47, 107, 79, 0.22);
+  box-shadow: 0 10px 22px rgba(35, 169, 124, 0.22);
 }
 
 .el-button--large {
@@ -121,19 +121,19 @@ a { color: var(--el-color-primary); text-decoration: none; }
 .el-input__wrapper.is-focus,
 .el-textarea__inner:focus,
 .el-select__wrapper.is-focused {
-  box-shadow: 0 0 0 1px rgba(47, 107, 79, 0.55) inset !important;
+  box-shadow: 0 0 0 1px rgba(35, 169, 124, 0.55) inset !important;
 }
 
 .el-upload-dragger {
-  border: 1.5px dashed rgba(47, 107, 79, 0.24) !important;
+  border: 1.5px dashed rgba(35, 169, 124, 0.28) !important;
   border-radius: 18px !important;
-  background: rgba(255, 255, 255, 0.55) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
 }
 
 .el-table {
-  --el-table-header-bg-color: rgba(47, 107, 79, 0.06);
+  --el-table-header-bg-color: rgba(35, 169, 124, 0.06);
   --el-table-tr-bg-color: transparent;
-  --el-table-row-hover-bg-color: rgba(47, 107, 79, 0.045);
+  --el-table-row-hover-bg-color: rgba(35, 169, 124, 0.05);
 }
 
 .el-page-header__left:hover { color: var(--brand-green); }

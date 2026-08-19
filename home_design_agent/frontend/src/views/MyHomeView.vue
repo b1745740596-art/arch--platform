@@ -590,10 +590,10 @@ watch(
   padding: 28px 30px;
   overflow: hidden;
   border-radius: 26px;
-  border: 1px solid rgba(47, 107, 79, 0.10);
+  border: 1px solid rgba(35, 169, 124, 0.10);
   background:
-    radial-gradient(circle at 85% 0%, rgba(200, 150, 98, 0.26), transparent 32%),
-    linear-gradient(135deg, #fbf8f1, #eef4ec);
+    radial-gradient(circle at 85% 0%, rgba(35, 169, 124, 0.26), transparent 32%),
+    linear-gradient(135deg, #ffffff, #eafaf4);
   box-shadow: var(--app-shadow);
 }
 
@@ -602,7 +602,7 @@ watch(
   height: 7px;
   border-radius: 50%;
   background: var(--brand-green);
-  box-shadow: 0 0 0 4px rgba(47, 107, 79, 0.12);
+  box-shadow: 0 0 0 4px rgba(35, 169, 124, 0.12);
 }
 
 .head-copy h1 {
@@ -632,7 +632,7 @@ watch(
   gap: 4px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(47, 107, 79, 0.10);
+  border: 1px solid rgba(35, 169, 124, 0.10);
   box-shadow: var(--app-shadow-soft);
   backdrop-filter: blur(14px);
 }
@@ -654,9 +654,9 @@ watch(
 }
 
 .seg-item.active {
-  background: linear-gradient(135deg, #3b7a5b, #2f6b4f);
+  background: linear-gradient(135deg, #35bd8d, #23a97c);
   color: #fff;
-  box-shadow: 0 7px 16px rgba(47, 107, 79, 0.20);
+  box-shadow: 0 7px 16px rgba(35, 169, 124, 0.20);
 }
 
 /* App 端：去掉营销头部后，让核心生成区直接顶到首屏，
@@ -713,7 +713,7 @@ watch(
 .report-detail,
 .orders-card {
   border-radius: 22px;
-  border: 1px solid rgba(47, 107, 79, 0.10);
+  border: 1px solid rgba(35, 169, 124, 0.10);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: var(--app-shadow-soft);
   backdrop-filter: blur(14px);
@@ -732,7 +732,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   padding: 2px 4px 12px;
-  border-bottom: 1px solid rgba(47, 107, 79, 0.08);
+  border-bottom: 1px solid rgba(35, 169, 124, 0.08);
 }
 
 .list-loading { padding: 12px 4px; }
@@ -757,15 +757,15 @@ watch(
   padding: 12px;
   border: 1px solid transparent;
   border-radius: 14px;
-  background: rgba(47, 107, 79, 0.04);
+  background: rgba(35, 169, 124, 0.04);
   cursor: pointer;
   font: inherit;
   color: var(--brand-ink);
   transition: border-color 0.18s ease, background 0.18s ease;
 }
 
-.report-item:hover { border-color: rgba(47, 107, 79, 0.14); }
-.report-item.active { border-color: rgba(47, 107, 79, 0.28); background: rgba(47, 107, 79, 0.09); }
+.report-item:hover { border-color: rgba(35, 169, 124, 0.14); }
+.report-item.active { border-color: rgba(35, 169, 124, 0.28); background: rgba(35, 169, 124, 0.09); }
 
 .report-item-title {
   font-size: 14px;
@@ -789,7 +789,7 @@ watch(
   flex: none;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(200, 150, 98, 0.14);
+  background: rgba(35, 169, 124, 0.14);
   color: var(--brand-wood-deep);
   font-weight: 700;
 }
@@ -830,7 +830,7 @@ watch(
   margin-bottom: 20px;
   border-radius: 18px;
   overflow: hidden;
-  background: #eef2ec;
+  background: #f0faf5;
   display: grid;
   place-items: center;
 }
@@ -861,7 +861,7 @@ watch(
   gap: 10px;
   padding: 10px;
   border-radius: 14px;
-  background: rgba(47, 107, 79, 0.06);
+  background: rgba(35, 169, 124, 0.06);
 }
 
 .window-card img,
@@ -877,7 +877,7 @@ watch(
   display: grid;
   place-items: center;
   color: var(--brand-muted);
-  background: rgba(47, 107, 79, 0.10);
+  background: rgba(35, 169, 124, 0.10);
 }
 
 .window-info {
@@ -902,7 +902,7 @@ watch(
 
 .report-section {
   padding: 16px 0;
-  border-top: 1px solid rgba(47, 107, 79, 0.08);
+  border-top: 1px solid rgba(35, 169, 124, 0.08);
 }
 
 .report-section h3 {
@@ -933,7 +933,7 @@ watch(
 .budget-band > div {
   padding: 14px;
   border-radius: 14px;
-  background: rgba(47, 107, 79, 0.07);
+  background: rgba(35, 169, 124, 0.07);
 }
 
 .budget-band span {
@@ -955,7 +955,7 @@ watch(
   gap: 10px;
   padding: 10px;
   border-radius: 14px;
-  background: rgba(200, 150, 98, 0.07);
+  background: rgba(35, 169, 124, 0.07);
 }
 
 .furniture-item img,
@@ -971,7 +971,7 @@ watch(
   display: grid;
   place-items: center;
   color: var(--brand-muted);
-  background: rgba(47, 107, 79, 0.08);
+  background: rgba(35, 169, 124, 0.08);
 }
 
 .furniture-info { min-width: 0; display: flex; flex-direction: column; }
@@ -995,7 +995,7 @@ watch(
   margin-top: 20px;
   padding: 16px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #eef4ec, #f7ead8);
+  background: linear-gradient(135deg, #eafaf4, #e8f8f1);
 }
 
 .order-bar > div { display: flex; flex-direction: column; gap: 4px; }
@@ -1011,7 +1011,7 @@ watch(
   gap: 14px;
   padding: 14px;
   border-radius: 14px;
-  background: rgba(47, 107, 79, 0.05);
+  background: rgba(35, 169, 124, 0.05);
 }
 
 .order-icon {
@@ -1020,7 +1020,7 @@ watch(
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: rgba(47, 107, 79, 0.12);
+  background: rgba(35, 169, 124, 0.12);
   color: var(--brand-green);
   font-size: 19px;
 }

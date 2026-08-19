@@ -236,14 +236,14 @@ const furnitureImages = computed(() =>
 .tip { font-size: 12px; color: var(--el-text-color-secondary); }
 .form { margin-top: 16px; }
 .rhd { display: flex; align-items: center; justify-content: space-between; }
-.render-img { width: 100%; max-height: 420px; border-radius: 8px; background: #f2f4f7; }
+.render-img { width: 100%; max-height: 420px; border-radius: 8px; background: #f5faf7; }
 .st { margin-top: 8px; }
 .fur { margin-bottom: 12px; }
 .fur-img {
   width: 100%;
   height: 120px;
   border-radius: 6px;
-  background: #f2f4f7;
+  background: #f5faf7;
   margin-bottom: 8px;
   cursor: zoom-in;
 }

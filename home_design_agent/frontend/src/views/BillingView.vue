@@ -205,7 +205,7 @@ const statusType = (status) => ({ paid: 'success', pending: 'warning', failed: '
   padding: 26px 28px;
   border: 1px solid var(--app-border);
   border-radius: 20px;
-  background: linear-gradient(135deg, #2f6b4f 0%, #204b37 100%);
+  background: linear-gradient(135deg, #35bd8d 0%, #12845f 100%);
   color: #fff;
   box-shadow: var(--app-shadow);
 }
@@ -229,10 +229,10 @@ h2 { margin: 0; font-size: 20px; }
   border-radius: 18px;
   background: var(--app-surface);
 }
-.plan-card.featured { border-color: rgba(47, 107, 79, 0.4); box-shadow: var(--app-shadow-soft); }
+.plan-card.featured { border-color: rgba(35, 169, 124, 0.4); box-shadow: var(--app-shadow-soft); }
 .badge {
   position: absolute; top: 16px; right: 16px;
-  padding: 3px 8px; border-radius: 999px; background: #c89662; color: #fff; font-size: 11px;
+  padding: 3px 8px; border-radius: 999px; background: #23a97c; color: #fff; font-size: 11px;
 }
 .plan-card h3 { margin: 0 0 6px; }
 .plan-desc { min-height: 38px; margin: 0 0 16px; color: var(--brand-muted); font-size: 13px; }

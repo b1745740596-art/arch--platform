@@ -61,20 +61,20 @@ async function renderCharts() {
       xAxis: {
         type: 'category',
         data: stats.value?.daily_revenue?.map((item) => item.date) || [],
-        axisLine: { lineStyle: { color: 'rgba(47,107,79,0.25)' } },
-        axisLabel: { color: '#68766e' },
+        axisLine: { lineStyle: { color: 'rgba(35,169,124,0.25)' } },
+        axisLabel: { color: '#697b71' },
       },
       yAxis: {
         type: 'value',
-        splitLine: { lineStyle: { color: 'rgba(47,107,79,0.08)' } },
-        axisLabel: { color: '#68766e', formatter: '¥{value}' },
+        splitLine: { lineStyle: { color: 'rgba(35,169,124,0.08)' } },
+        axisLabel: { color: '#697b71', formatter: '¥{value}' },
       },
       series: [{
         name: t('adminPayments.revenue'),
         type: 'bar',
         barWidth: '52%',
         data: stats.value?.daily_revenue?.map((item) => Number((item.amount_cents || 0) / 100)) || [],
-        itemStyle: { color: '#2f6b4f', borderRadius: [6, 6, 0, 0] },
+        itemStyle: { color: '#23a97c', borderRadius: [6, 6, 0, 0] },
       }],
     })
   }
@@ -87,8 +87,8 @@ async function renderCharts() {
     }))
     providerChart.value.setOption({
       tooltip: { trigger: 'item', formatter: '{b}：¥{c}（{d}%）' },
-      legend: { bottom: 0, textStyle: { color: '#68766e' } },
-      color: ['#2f6b4f', '#7fae96', '#c89662'],
+      legend: { bottom: 0, textStyle: { color: '#697b71' } },
+      color: ['#23a97c', '#5fd4ab', '#a8e6cf'],
       series: [{
         name: t('adminPayments.provider'),
         type: 'pie',
@@ -264,7 +264,7 @@ onBeforeUnmount(() => {
 }
 .summary-card span { display: block; color: var(--brand-muted); font-size: 12px; margin-bottom: 8px; }
 .summary-card b { font-size: 22px; color: var(--brand-green-deep); }
-.summary-card.primary { background: linear-gradient(135deg, #2f6b4f 0%, #204b37 100%); border: 0; }
+.summary-card.primary { background: linear-gradient(135deg, #35bd8d 0%, #12845f 100%); border: 0; }
 .summary-card.primary span { color: rgba(255,255,255,0.72); }
 .summary-card.primary b { color: #fff; }
 .diag-card { margin: 16px 0; }

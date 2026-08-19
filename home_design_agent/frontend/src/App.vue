@@ -64,7 +64,7 @@ async function configureAppChrome() {
   if (!isApp.value) return
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar')
-    await StatusBar.setBackgroundColor({ color: '#f6f1e8' })
+    await StatusBar.setBackgroundColor({ color: '#ffffff' })
     await StatusBar.setStyle({ style: Style.Dark })
   } catch {
     // 状态栏插件不可用时降级，不影响页面渲染。
@@ -108,9 +108,9 @@ watch(
           <router-link class="brand" :to="defaultPath">
             <span class="brand-mark" aria-hidden="true">
               <svg viewBox="0 0 40 40" fill="none">
-                <rect x="3" y="3" width="34" height="34" rx="11" fill="#2f6b4f" />
-                <path d="M9 24 L14 16 L19 22 L24 12 L31 24 Z" fill="#c89662" />
-                <path d="M9 24 H31 V29 H9 Z" fill="#f6f1e8" />
+                <rect x="3" y="3" width="34" height="34" rx="11" fill="#23a97c" />
+                <path d="M9 24 L14 16 L19 22 L24 12 L31 24 Z" fill="#5fd4ab" />
+                <path d="M9 24 H31 V29 H9 Z" fill="#ffffff" />
               </svg>
             </span>
             <span class="brand-copy">
@@ -261,10 +261,10 @@ watch(
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(246, 241, 232, 0.76);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: saturate(160%) blur(20px);
   -webkit-backdrop-filter: saturate(160%) blur(20px);
-  border-bottom: 1px solid rgba(47, 107, 79, 0.10);
+  border-bottom: 1px solid rgba(35, 169, 124, 0.10);
 }
 
 .topbar::after {
@@ -274,7 +274,7 @@ watch(
   right: 0;
   bottom: -1px;
   height: 2px;
-  background: linear-gradient(90deg, #2f6b4f 0%, #c89662 55%, transparent 100%);
+  background: linear-gradient(90deg, #23a97c 0%, #5fd4ab 55%, transparent 100%);
   opacity: 0.75;
 }
 
@@ -302,7 +302,7 @@ watch(
   display: grid;
   place-items: center;
   border-radius: 12px;
-  box-shadow: 0 7px 16px rgba(47, 107, 79, 0.18);
+  box-shadow: 0 7px 16px rgba(35, 169, 124, 0.18);
 }
 
 .brand-mark svg { width: 40px; height: 40px; }
@@ -341,8 +341,8 @@ watch(
   transition: color 0.18s ease, background 0.18s ease;
 }
 
-.nav-item:hover { color: var(--brand-green); background: rgba(47, 107, 79, 0.07); }
-.nav-item.active { color: var(--brand-green-deep); background: rgba(47, 107, 79, 0.11); }
+.nav-item:hover { color: var(--brand-green); background: rgba(35, 169, 124, 0.07); }
+.nav-item.active { color: var(--brand-green-deep); background: rgba(35, 169, 124, 0.11); }
 
 .actions {
   flex: none;
@@ -360,7 +360,7 @@ watch(
   border-radius: 999px;
   color: var(--brand-green-deep);
   background: rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(47, 107, 79, 0.14);
+  border: 1px solid rgba(35, 169, 124, 0.14);
   font-size: 13px;
   cursor: pointer;
   outline: none;
@@ -388,7 +388,7 @@ watch(
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b7a5b, #204b37);
+  background: linear-gradient(135deg, #35bd8d, #12845f);
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -414,14 +414,14 @@ watch(
   color: var(--brand-green-deep);
   font-size: 13px;
   font-weight: 700;
-  border: 1px solid rgba(47, 107, 79, 0.16);
+  border: 1px solid rgba(35, 169, 124, 0.16);
 }
 
 .auth-link.primary {
   color: #fff;
   border-color: transparent;
-  background: linear-gradient(135deg, #3b7a5b, #2f6b4f);
-  box-shadow: 0 8px 18px rgba(47, 107, 79, 0.18);
+  background: linear-gradient(135deg, #35bd8d, #23a97c);
+  box-shadow: 0 8px 18px rgba(35, 169, 124, 0.18);
 }
 
 .app-main {
@@ -433,7 +433,7 @@ watch(
 }
 
 .app-footer {
-  border-top: 1px solid rgba(47, 107, 79, 0.09);
+  border-top: 1px solid rgba(35, 169, 124, 0.09);
   background: rgba(255, 255, 255, 0.35);
 }
 
@@ -455,7 +455,7 @@ watch(
   height: 7px;
   border-radius: 50%;
   background: var(--brand-green);
-  box-shadow: 0 0 0 4px rgba(47, 107, 79, 0.10);
+  box-shadow: 0 0 0 4px rgba(35, 169, 124, 0.10);
 }
 
 .page-enter-active,
@@ -527,7 +527,7 @@ watch(
   gap: 2px;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.94);
-  border-top: 1px solid rgba(47, 107, 79, 0.10);
+  border-top: 1px solid rgba(35, 169, 124, 0.10);
   box-shadow: 0 -8px 24px rgba(45, 62, 52, 0.10);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -561,7 +561,7 @@ watch(
 .tabbar-item:active { transform: scale(0.96); }
 .tabbar-item.active {
   color: var(--brand-green-deep);
-  background: rgba(47, 107, 79, 0.08);
+  background: rgba(35, 169, 124, 0.08);
 }
 
 .tabbar-icon-wrap {

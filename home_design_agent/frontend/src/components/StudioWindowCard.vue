@@ -515,7 +515,7 @@ function groupHint(group) {
 .submit { width: 100%; }
 .err { margin-top: 10px; }
 .err-msg { font-size: 12px; margin: 4px 0 8px; word-break: break-word; }
-.render-img { width: 100%; max-height: 280px; border-radius: 8px; background: #f2f4f7; }
+.render-img { width: 100%; max-height: 280px; border-radius: 8px; background: #f5faf7; }
 .applied { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
 .wf-opt { margin-left: 8px; }
 .wf-hint { display: block; line-height: 1.5; margin-top: 2px; }
@@ -533,7 +533,7 @@ function groupHint(group) {
   overflow: auto;
 }
 .fur { margin-bottom: 8px; }
-.fur-img { width: 100%; height: 84px; border-radius: 4px; background: #f2f4f7; margin-bottom: 6px; cursor: zoom-in; }
+.fur-img { width: 100%; height: 84px; border-radius: 4px; background: #f5faf7; margin-bottom: 6px; cursor: zoom-in; }
 .fur-img-ph {
   display: flex;
   align-items: center;

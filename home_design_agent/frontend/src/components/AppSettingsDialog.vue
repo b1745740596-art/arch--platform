@@ -167,7 +167,7 @@ async function logout() {
   gap: 12px;
   width: 100%;
   padding: 12px;
-  border: 1px solid rgba(47, 107, 79, 0.10);
+  border: 1px solid rgba(35, 169, 124, 0.10);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.72);
   color: var(--brand-ink);
@@ -176,7 +176,7 @@ async function logout() {
   text-align: left;
 }
 
-.settings-row:hover { background: rgba(47, 107, 79, 0.07); }
+.settings-row:hover { background: rgba(35, 169, 124, 0.07); }
 
 .settings-icon {
   width: 36px;
@@ -184,7 +184,7 @@ async function logout() {
   display: grid;
   place-items: center;
   border-radius: 12px;
-  background: rgba(47, 107, 79, 0.10);
+  background: rgba(35, 169, 124, 0.10);
   color: var(--brand-green);
   font-size: 18px;
 }
@@ -220,8 +220,8 @@ async function logout() {
 .update-card {
   padding: 14px;
   border-radius: 14px;
-  background: rgba(47, 107, 79, 0.05);
-  border: 1px solid rgba(47, 107, 79, 0.09);
+  background: rgba(35, 169, 124, 0.05);
+  border: 1px solid rgba(35, 169, 124, 0.09);
 }
 
 .update-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
@@ -239,7 +239,7 @@ async function logout() {
 
 .version-line b { color: var(--brand-ink); }
 
-.changelog { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(47, 107, 79, 0.16); }
+.changelog { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(35, 169, 124, 0.16); }
 .changelog-title { font-size: 12px; font-weight: 800; color: var(--brand-green); margin-bottom: 4px; }
 .changelog-item { color: var(--brand-muted); font-size: 12px; line-height: 1.7; }
 

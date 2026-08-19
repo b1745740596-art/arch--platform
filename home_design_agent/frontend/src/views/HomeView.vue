@@ -228,10 +228,10 @@ const showcase = [
   overflow: hidden;
   border-radius: 30px;
   background:
-    radial-gradient(circle at 12% 14%, rgba(200, 150, 98, 0.28), transparent 34%),
-    radial-gradient(circle at 82% 82%, rgba(47, 107, 79, 0.30), transparent 38%),
-    linear-gradient(135deg, #fbf8f1 0%, #eef4ec 52%, #e6efe8 100%);
-  border: 1px solid rgba(47, 107, 79, 0.10);
+    radial-gradient(circle at 12% 14%, rgba(35, 169, 124, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 82%, rgba(95, 212, 171, 0.22), transparent 38%),
+    linear-gradient(135deg, #ffffff 0%, #eafaf4 52%, #e7f8f0 100%);
+  border: 1px solid rgba(35, 169, 124, 0.10);
   box-shadow: var(--app-shadow);
 }
 
@@ -451,12 +451,12 @@ const showcase = [
   padding: 22px 16px 18px;
   border-radius: 22px;
   overflow: hidden;
-  border: 1px solid rgba(47, 107, 79, 0.10);
-  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(35, 169, 124, 0.10);
+  background: rgba(255, 255, 255, 0.88);
   box-shadow: var(--app-shadow-soft);
 }
 
-.step.tone-wood { background: linear-gradient(160deg, #fffdf8, #f3e5cf); }
+.step.tone-wood { background: linear-gradient(160deg, #ffffff, #e7f8f0); }
 
 .step-index {
   position: absolute;
@@ -464,7 +464,7 @@ const showcase = [
   top: 8px;
   font-size: 26px;
   font-weight: 800;
-  color: rgba(47, 107, 79, 0.10);
+  color: rgba(35, 169, 124, 0.10);
   letter-spacing: -0.04em;
 }
 
@@ -474,14 +474,14 @@ const showcase = [
   display: grid;
   place-items: center;
   border-radius: 13px;
-  background: rgba(47, 107, 79, 0.12);
+  background: rgba(35, 169, 124, 0.12);
   color: var(--brand-green);
   font-size: 21px;
 }
 
 .step.tone-wood .step-icon {
-  background: rgba(200, 150, 98, 0.16);
-  color: var(--brand-wood-deep);
+  background: rgba(35, 169, 124, 0.16);
+  color: var(--brand-green-deep);
 }
 
 .step-title { margin-top: 14px; font-size: 15px; font-weight: 750; }

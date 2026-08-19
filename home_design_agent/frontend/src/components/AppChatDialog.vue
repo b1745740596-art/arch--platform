@@ -86,7 +86,7 @@ function send() {
 }
 .message.is-user {
   align-self: flex-end;
-  background: linear-gradient(135deg, #3b7a5b, #2f6b4f);
+  background: linear-gradient(135deg, #35bd8d, #23a97c);
   color: #fff;
 }
 .chat-input { display: flex; gap: 8px; }
