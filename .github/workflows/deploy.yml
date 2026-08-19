@@ -74,6 +74,7 @@ jobs:
             git -C "$REPO_ROOT" reset --hard origin/main
             cd "$DEPLOY_PATH"
             docker compose up -d --build
+            docker compose restart nginx
             docker compose ps
           EOF
 
