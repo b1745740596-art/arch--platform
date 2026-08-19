@@ -19,7 +19,9 @@ export default {
   },
   appUpdate: {
     settings: 'Settings',
+    my: 'Me',
     accountHint: 'Profile, password and bindings',
+    languageHint: '中文 / English',
     updateTitle: 'App update',
     currentVersion: 'Current version',
     latestVersion: 'Latest version',

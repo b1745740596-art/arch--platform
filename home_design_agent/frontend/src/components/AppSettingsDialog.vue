@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAppUpdateStore } from '@/stores/appUpdate'
+import { useAuthStore } from '@/stores/auth'
+import { SUPPORTED_LOCALES, currentLocale, setLocale } from '@/i18n'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -13,6 +15,8 @@ const emit = defineEmits(['update:modelValue'])
 const router = useRouter()
 const { t } = useI18n()
 const appUpdate = useAppUpdateStore()
+const auth = useAuthStore()
+const locale = currentLocale
 
 const visible = computed({
   get: () => props.modelValue,
@@ -36,6 +40,16 @@ function openAccount() {
   visible.value = false
   router.push('/account')
 }
+
+function switchLocale(value) {
+  setLocale(value)
+}
+
+async function logout() {
+  await auth.logout()
+  visible.value = false
+  router.push('/login')
+}
 </script>
 
 <template>
@@ -55,6 +69,27 @@ function openAccount() {
         </span>
         <el-icon class="settings-arrow"><ArrowRight /></el-icon>
       </button>
+
+      <div class="settings-row language-row">
+        <span class="settings-icon"><el-icon><Switch /></el-icon></span>
+        <span class="settings-copy">
+          <b>{{ t('nav.language') }}</b>
+          <small>{{ t('appUpdate.languageHint') }}</small>
+        </span>
+        <el-select
+          :model-value="locale"
+          size="small"
+          class="language-select"
+          @change="switchLocale"
+        >
+          <el-option
+            v-for="item in SUPPORTED_LOCALES"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
+        </el-select>
+      </div>
 
       <div class="update-card">
         <div class="update-head">
@@ -114,6 +149,11 @@ function openAccount() {
           </el-button>
         </div>
       </div>
+
+      <button type="button" class="logout-row" @click="logout">
+        <el-icon><SwitchButton /></el-icon>
+        <span>{{ t('auth.logout') }}</span>
+      </button>
     </div>
   </el-dialog>
 </template>
@@ -153,6 +193,29 @@ function openAccount() {
 .settings-copy b { font-size: 14px; }
 .settings-copy small { color: var(--brand-muted); font-size: 12px; }
 .settings-arrow { color: var(--brand-muted); }
+
+.language-row { cursor: default; }
+.language-row:hover { background: rgba(255, 255, 255, 0.72); }
+.language-select { width: 112px; }
+
+.logout-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 11px;
+  border: 1px solid rgba(193, 93, 77, 0.18);
+  border-radius: 14px;
+  background: rgba(193, 93, 77, 0.06);
+  color: var(--el-color-danger);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.logout-row:hover { background: rgba(193, 93, 77, 0.10); }
 
 .update-card {
   padding: 14px;

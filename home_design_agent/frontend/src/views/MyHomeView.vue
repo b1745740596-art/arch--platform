@@ -641,7 +641,7 @@ onMounted(() => {
 
 .my-home.is-app .segmented.is-app {
   position: sticky;
-  top: 68px;
+  top: 12px;
   z-index: 20;
   align-self: stretch;
   justify-content: space-between;

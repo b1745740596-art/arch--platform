@@ -19,7 +19,9 @@ export default {
   },
   appUpdate: {
     settings: '设置',
+    my: '我的',
     accountHint: '账号信息、密码与绑定',
+    languageHint: '中文 / English',
     updateTitle: '应用更新',
     currentVersion: '当前版本',
     latestVersion: '最新版本',

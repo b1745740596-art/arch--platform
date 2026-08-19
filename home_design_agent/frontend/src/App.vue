@@ -101,7 +101,7 @@ watch(
 <template>
   <el-config-provider :locale="elementLocale">
     <div class="app" :class="{ 'is-app': isApp }">
-      <header class="topbar" :class="{ 'is-app': isApp }">
+      <header v-if="!isApp" class="topbar">
         <div class="topbar-inner">
           <router-link class="brand" :to="defaultPath">
             <span class="brand-mark" aria-hidden="true">
@@ -227,10 +227,10 @@ watch(
           @click="settingsVisible = true"
         >
           <span class="tabbar-icon-wrap">
-            <el-icon><Setting /></el-icon>
+            <el-icon><User /></el-icon>
             <span v-if="appUpdate.updateAvailable" class="update-dot"></span>
           </span>
-          <span>{{ t('appUpdate.settings') }}</span>
+          <span>{{ t('appUpdate.my') }}</span>
         </button>
       </nav>
 
