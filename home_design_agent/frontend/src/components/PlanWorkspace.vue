@@ -8,7 +8,6 @@ import { useStudioStore } from '@/stores/studio'
 import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
 import { validateImageFile } from '@/utils/validation'
-import CommunityFeed from '@/components/CommunityFeed.vue'
 
 const router = useRouter()
 const studio = useStudioStore()
@@ -362,7 +361,6 @@ async function packageRecords() {
 
 <template>
   <div class="plan-workspace">
-    <CommunityFeed />
     <section class="plan-main">
       <div class="step-content">
         <div v-show="step === 0" class="step-panel">
@@ -648,23 +646,13 @@ async function packageRecords() {
 <style scoped>
 .plan-workspace {
   display: block;
-  position: relative;
-}
-
-.plan-workspace :deep(.community-feed) {
-  position: relative;
-  z-index: 2;
-  margin: 0;
 }
 
 .plan-main {
-  position: relative;
-  z-index: 0;
-  margin-top: -36px;
   border: 1px solid var(--app-border);
   border-radius: 18px;
   background: var(--app-surface);
-  padding: 48px 16px 16px;
+  padding: 16px;
 }
 
 .records-empty {

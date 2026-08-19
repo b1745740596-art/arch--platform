@@ -18,6 +18,7 @@ const route = useRoute()
 const studio = useStudioStore()
 
 const tab = ref('studio')
+const studioExpanded = ref(false)
 const reports = ref([])
 const orders = ref([])
 const reportsLoading = ref(false)
@@ -426,7 +427,18 @@ watch(
     </div>
 
     <div v-show="tab === 'studio'" class="tab-panel">
-      <StudioView />
+      <button
+        type="button"
+        class="studio-collapse-toggle"
+        :class="{ expanded: studioExpanded }"
+        @click="studioExpanded = !studioExpanded"
+      >
+        <span>{{ t('myHome.tabStudio') }}</span>
+        <el-icon><ArrowDown v-if="!studioExpanded" /><ArrowUp v-else /></el-icon>
+      </button>
+      <div v-show="studioExpanded" class="studio-collapse-content">
+        <StudioView />
+      </div>
     </div>
 
     <div v-show="tab === 'report'" class="tab-panel">
@@ -836,6 +848,26 @@ watch(
   min-width: max-content;
   justify-content: center;
   padding: 10px 14px;
+}
+
+.studio-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  background: var(--app-surface);
+  color: var(--brand-green-deep);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.studio-collapse-content {
+  margin-top: 10px;
 }
 
 .tab-panel { min-width: 0; }
