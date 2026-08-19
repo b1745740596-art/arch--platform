@@ -1,7 +1,7 @@
 {
   "version": "1.1.2",
   "build": 4,
-  "apk_url": "/media/app/arch-ai.apk",
+  "apk_url": "/media/app/arch-ai.apk?v=1.1.2",
   "changelog": [
     "修复点击下载安装包无反应的问题",
     "优化 App 顶部栏与启动背景样式",
