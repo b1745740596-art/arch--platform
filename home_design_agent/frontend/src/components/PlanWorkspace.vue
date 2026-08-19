@@ -513,13 +513,13 @@ async function packageRecords() {
             {{ t('win.generate') }}
           </el-button>
         </div>
-      </div>
 
-      <div class="step-actions">
-        <el-button :disabled="step === 0" @click="previousStep">{{ t('plan.previous') }}</el-button>
-        <el-button v-if="step < steps.length - 1" type="primary" :disabled="!stepValid()" @click="nextStep">
-          {{ t('plan.next') }}
-        </el-button>
+        <div class="step-actions">
+          <el-button :disabled="step === 0" @click="previousStep">{{ t('plan.previous') }}</el-button>
+          <el-button v-if="step < steps.length - 1" type="primary" :disabled="!stepValid()" @click="nextStep">
+            {{ t('plan.next') }}
+          </el-button>
+        </div>
       </div>
 
       <section class="records-section">
@@ -754,7 +754,7 @@ async function packageRecords() {
 .step-dot.active { color: var(--brand-green-deep); }
 .step-dot.active span { background: var(--brand-green); color: #fff; }
 
-.step-content { min-height: 320px; }
+.step-content { min-height: 0; }
 .step-panel { display: flex; flex-direction: column; gap: 12px; }
 
 .plan-name-field { display: flex; flex-direction: column; gap: 6px; }
@@ -874,15 +874,10 @@ async function packageRecords() {
 .review-line b { text-align: right; }
 
 .step-actions {
-  position: sticky;
-  bottom: 0;
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  margin: 16px -16px -16px;
-  padding: 10px 16px;
-  background: var(--app-surface);
-  border-top: 1px solid var(--app-border);
+  margin-top: 12px;
 }
 .generate-btn { width: 100%; margin-top: 8px; }
 

@@ -857,6 +857,9 @@ watch(
 }
 
 .studio-collapse-toggle {
+  position: sticky;
+  top: 68px;
+  z-index: 30;
   display: flex;
   align-items: center;
   gap: 12px;
