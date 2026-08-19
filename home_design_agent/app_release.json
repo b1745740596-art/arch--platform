@@ -1,8 +1,9 @@
 {
-  "version": "1.1.0",
-  "build": 2,
+  "version": "1.1.1",
+  "build": 3,
   "apk_url": "/media/app/arch-ai.apk",
   "changelog": [
+    "优化 App 顶部栏与启动背景样式",
     "App 首页直达核心设计功能",
     "修复家具图片显示问题",
     "新增应用自动更新模块"
