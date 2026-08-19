@@ -287,6 +287,7 @@ async function packageRecords() {
   try {
     const first = records.value[0]
     const pid = await ensureProject()
+    const title = projectName.value || draft.plan_name.trim() || t('plan.packageTitle', { count: records.value.length })
     const furnitures = records.value.reduce((list, record) => {
       for (const item of record.result?.furnitures || []) {
         if (!list.some((existing) => existing.id === item.id)) list.push(item)
@@ -295,7 +296,8 @@ async function packageRecords() {
     }, [])
     const total = furnitures.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
     const payload = {
-      title: t('plan.packageTitle', { count: records.value.length }),
+      title,
+      plan_name: title,
       room_type: first.room_type,
       style: first.style,
       budget_tier: first.budget_tier,

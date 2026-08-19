@@ -327,6 +327,27 @@ async function renameReport(report) {
   }
 }
 
+async function deleteReport(report) {
+  try {
+    await ElMessageBox.confirm(
+      t('myHome.deleteHint'),
+      t('myHome.deleteTitle'),
+      {
+        confirmButtonText: t('common.yes'),
+        cancelButtonText: t('common.no'),
+        type: 'warning',
+      },
+    )
+    await api.deleteReport(report.id)
+    ElMessage.success(t('myHome.deleteSuccess'))
+    await loadReports()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(t('myHome.deleteFailed', { msg: extractError(error) }))
+    }
+  }
+}
+
 function openWorkbench() {
   if (studio.canAddWindow) studio.addWindow()
   tab.value = 'studio'
@@ -350,7 +371,13 @@ onMounted(() => {
 
 watch(
   () => route.query.tab,
-  () => applyRouteTab(),
+  (value) => {
+    applyRouteTab()
+    if (value === 'report' || value === 'orders') {
+      loadReports()
+      loadOrders()
+    }
+  },
 )
 </script>
 
@@ -405,10 +432,6 @@ watch(
     <div v-show="tab === 'report'" class="tab-panel">
       <div class="report-layout">
         <aside class="report-list">
-          <div class="list-head">
-            <b>{{ t('myHome.reportList') }}</b>
-            <el-tag size="small" type="info" effect="plain">{{ reports.length }}</el-tag>
-          </div>
           <div v-if="reportsLoading" class="list-loading"><el-skeleton :rows="4" animated /></div>
           <div v-else-if="!reports.length" class="empty-state">
             <el-icon><Document /></el-icon>
@@ -425,14 +448,25 @@ watch(
           >
             <div class="report-item-title">
               <span>{{ report.title || t('common.none') }}</span>
-              <el-button
-                size="small"
-                text
-                :title="t('myHome.renameTitle')"
-                @click.stop="renameReport(report)"
-              >
-                <el-icon><EditPen /></el-icon>
-              </el-button>
+              <div class="report-item-actions">
+                <el-button
+                  size="small"
+                  text
+                  :title="t('myHome.renameTitle')"
+                  @click.stop="renameReport(report)"
+                >
+                  <el-icon><EditPen /></el-icon>
+                </el-button>
+                <el-button
+                  size="small"
+                  text
+                  type="danger"
+                  :title="t('myHome.deleteTitle')"
+                  @click.stop="deleteReport(report)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
             </div>
             <div class="report-item-meta">
               <span>{{ term(report.room_type) }} · {{ term(report.style) }}</span>
@@ -891,6 +925,12 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-item-actions {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
 }
 
 .report-item-meta {
