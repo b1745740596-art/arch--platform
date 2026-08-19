@@ -460,7 +460,13 @@ watch(
 /* App 端（Capacitor / 原生壳）：更像移动端首页，去掉营销型布局的余量，
    让核心功能尽量顶到首屏。 */
 .app.is-app .topbar.is-app {
-  background: rgba(246, 241, 232, 0.92);
+  background: var(--brand-ivory);
+  border-bottom: none;
+  box-shadow: none;
+}
+
+.app.is-app .topbar.is-app::after {
+  display: none;
 }
 
 .app.is-app .topbar.is-app .topbar-inner {
