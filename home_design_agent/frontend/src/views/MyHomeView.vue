@@ -645,7 +645,13 @@ onMounted(() => {
   z-index: 20;
   align-self: stretch;
   justify-content: space-between;
+  padding: 4px;
+  border: none;
   border-radius: 18px;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .my-home.is-app .seg-item {
