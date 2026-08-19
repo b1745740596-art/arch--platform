@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import StudioView from './StudioView.vue'
+import RequirementView from './RequirementView.vue'
+import IntakeView from './IntakeView.vue'
 import { useStudioStore } from '@/stores/studio'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
@@ -28,6 +30,8 @@ const TABS = [
   { key: 'studio', icon: 'Grid', labelKey: 'myHome.tabStudio' },
   { key: 'report', icon: 'Document', labelKey: 'myHome.tabReport' },
   { key: 'orders', icon: 'ShoppingCart', labelKey: 'myHome.tabOrders' },
+  { key: 'requirement', icon: 'ChatDotRound', labelKey: 'nav.requirement' },
+  { key: 'intake', icon: 'UploadFilled', labelKey: 'nav.intake' },
 ]
 
 const tierBudget = {
@@ -545,6 +549,14 @@ onMounted(() => {
         </div>
       </el-card>
     </div>
+
+    <div v-show="tab === 'requirement'" class="tab-panel">
+      <RequirementView />
+    </div>
+
+    <div v-show="tab === 'intake'" class="tab-panel">
+      <IntakeView />
+    </div>
   </div>
 </template>
 
@@ -644,7 +656,9 @@ onMounted(() => {
   top: 12px;
   z-index: 20;
   align-self: stretch;
-  justify-content: space-between;
+  justify-content: flex-start;
+  overflow-x: auto;
+  flex-wrap: nowrap;
   padding: 4px;
   border: none;
   border-radius: 18px;
@@ -652,12 +666,18 @@ onMounted(() => {
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  scrollbar-width: none;
+}
+
+.my-home.is-app .segmented.is-app::-webkit-scrollbar {
+  display: none;
 }
 
 .my-home.is-app .seg-item {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: max-content;
   justify-content: center;
-  padding: 10px 12px;
+  padding: 10px 14px;
 }
 
 .tab-panel { min-width: 0; }

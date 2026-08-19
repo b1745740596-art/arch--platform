@@ -204,22 +204,6 @@ watch(
           <el-icon><House /></el-icon>
           <span>{{ t('nav.myHome') }}</span>
         </router-link>
-        <router-link
-          class="tabbar-item"
-          :class="{ active: route.path === '/requirement' }"
-          to="/requirement"
-        >
-          <el-icon><ChatDotRound /></el-icon>
-          <span>{{ t('nav.requirement') }}</span>
-        </router-link>
-        <router-link
-          class="tabbar-item"
-          :class="{ active: route.path === '/intake' }"
-          to="/intake"
-        >
-          <el-icon><UploadFilled /></el-icon>
-          <span>{{ t('nav.intake') }}</span>
-        </router-link>
         <button
           type="button"
           class="tabbar-item"
@@ -519,7 +503,7 @@ watch(
   bottom: 0;
   z-index: 60;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.94);
