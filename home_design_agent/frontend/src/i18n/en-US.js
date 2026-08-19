@@ -30,7 +30,7 @@ export default {
     autoAvailable: 'New version {version} is available. Update now?',
     updateNow: 'Update now',
     later: 'Later',
-    download: 'Download APK',
+    download: 'Update',
     changelog: "What's new",
     failed: 'Update check failed: {msg}',
   },

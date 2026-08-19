@@ -34,6 +34,11 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   function downloadLatest() {
     if (!latest.value?.apk_url) return
     const url = new URL(latest.value.apk_url, window.location.origin).href
+    // 原生壳内 WebView 不会触发 <a download> 下载，交给系统浏览器打开下载地址。
+    if (isNativeApp()) {
+      window.open(url, '_system', 'location=yes')
+      return
+    }
     const link = document.createElement('a')
     link.href = url
     link.target = '_blank'

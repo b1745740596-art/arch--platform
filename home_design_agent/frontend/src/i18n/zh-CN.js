@@ -30,7 +30,7 @@ export default {
     autoAvailable: '发现新版本 {version}，是否立即更新？',
     updateNow: '立即更新',
     later: '稍后',
-    download: '下载安装包',
+    download: '更新',
     changelog: '更新内容',
     failed: '检查更新失败：{msg}',
   },
