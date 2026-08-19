@@ -19,13 +19,17 @@ from .serializers import (
     PhoneBindSerializer,
     PhoneLoginSerializer,
     SmsCodeRequestSerializer,
+    TokenLoginSerializer,
     UserProfileSerializer,
 )
 from .services import (
     build_password_reset_url,
+    consume_remember_token,
     create_email_code,
     create_password_reset_token,
+    create_remember_token,
     create_sms_code,
+    revoke_remember_token,
     send_password_reset_email,
 )
 
@@ -245,6 +249,37 @@ class EmailLoginView(APIView):
         serializer = EmailLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        login(request, user)
+        return Response(_user_payload(user))
+
+
+class RememberTokenView(APIView):
+    """持久登录令牌：POST 创建，DELETE 注销当前令牌。"""
+
+    permission_classes = [IsAuthenticated, IsActiveUser]
+
+    def post(self, request):
+        raw_token = create_remember_token(request.user)
+        return Response({'token': raw_token}, status=201)
+
+    def delete(self, request):
+        raw_token = request.data.get('token') or request.query_params.get('token')
+        revoke_remember_token(raw_token)
+        return Response({'detail': '已注销持久登录。'})
+
+
+class TokenLoginView(APIView):
+    """用持久登录令牌恢复 Session 登录。"""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = TokenLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = consume_remember_token(serializer.validated_data['token'])
+        if user is None:
+            return Response({'detail': '登录已过期，请重新登录。'}, status=400)
         login(request, user)
         return Response(_user_payload(user))
 

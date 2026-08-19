@@ -10,11 +10,12 @@ from django.core import mail
 from django.core.management import call_command
 from django.test import override_settings
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 
 from users.models import (
     EmailVerificationCode,
     PasswordResetToken,
+    RememberToken,
     SmsVerificationCode,
     UserProfile,
 )
@@ -34,6 +35,8 @@ EMAIL_BIND_CODE_URL = '/api/users/email/bind-code/'
 EMAIL_BIND_URL = '/api/users/email/bind/'
 EMAIL_LOGIN_CODE_URL = '/api/users/email/login-code/'
 EMAIL_LOGIN_URL = '/api/users/email/login/'
+REMEMBER_URL = '/api/users/remember/'
+TOKEN_LOGIN_URL = '/api/users/token-login/'
 
 
 class MeViewTests(APITestCase):
@@ -443,6 +446,45 @@ class EmailAuthFlowTests(APITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class RememberTokenTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='frank', password='secret123')
+
+    def test_create_requires_authentication(self):
+        response = self.client.post(REMEMBER_URL, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_token_restores_session(self):
+        self.client.force_authenticate(self.user)
+        create_response = self.client.post(REMEMBER_URL, {}, format='json')
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        raw_token = create_response.data['token']
+        self.assertTrue(RememberToken.objects.filter(user=self.user).exists())
+
+        anon = APIClient()
+        login_response = anon.post(TOKEN_LOGIN_URL, {'token': raw_token}, format='json')
+        self.assertEqual(login_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(login_response.data['username'], 'frank')
+
+        me_response = anon.get(ME_URL)
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['username'], 'frank')
+
+    def test_invalid_token_rejected(self):
+        response = self.client.post(TOKEN_LOGIN_URL, {'token': 'bad-token'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_revoke_token(self):
+        self.client.force_authenticate(self.user)
+        raw_token = self.client.post(REMEMBER_URL, {}, format='json').data['token']
+
+        revoke_response = self.client.delete(REMEMBER_URL, {'token': raw_token}, format='json')
+        self.assertEqual(revoke_response.status_code, status.HTTP_200_OK)
+
+        login_response = self.client.post(TOKEN_LOGIN_URL, {'token': raw_token}, format='json')
+        self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class SeedRolesCommandTests(APITestCase):

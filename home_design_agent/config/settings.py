@@ -230,6 +230,9 @@ EMAIL_CODE_LENGTH = env.int('EMAIL_CODE_LENGTH', default=6)
 EMAIL_CODE_TTL_MINUTES = env.int('EMAIL_CODE_TTL_MINUTES', default=5)
 EMAIL_CODE_MAX_ATTEMPTS = env.int('EMAIL_CODE_MAX_ATTEMPTS', default=5)
 
+# 持久登录令牌（App 端关闭后可恢复登录）
+REMEMBER_TOKEN_TTL_DAYS = env.int('REMEMBER_TOKEN_TTL_DAYS', default=30)
+
 # ---- 支付与额度 ----
 # mock：本地联调，不发起真实扣款，前端可点击「模拟支付」完成入账；
 # live：按下方渠道配置发起真实收款。上线前请务必切换为 live 并配置密钥。

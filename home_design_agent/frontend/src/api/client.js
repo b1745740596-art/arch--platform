@@ -155,6 +155,10 @@ export const api = {
   bindEmail: (data) => usersClient.post('/email/bind/', data),
   sendEmailLoginCode: (email) => usersClient.post('/email/login-code/', { email }),
   emailLogin: (data) => usersClient.post('/email/login/', data),
+  // 持久登录令牌
+  createRememberToken: () => usersClient.post('/remember/'),
+  tokenLogin: (token) => usersClient.post('/token-login/', { token }),
+  revokeRememberToken: (token) => usersClient.delete('/remember/', { data: { token } }),
   // 后台用户管理（staff/superuser）
   listAdminUsers: (params) => usersClient.get('/admin/users/', { params }),
   createAdminUser: (data) => usersClient.post('/admin/users/', data),

@@ -25,6 +25,8 @@ urlpatterns = [
     path('email/bind/', views.EmailBindView.as_view(), name='email-bind'),
     path('email/login-code/', views.EmailLoginCodeView.as_view(), name='email-login-code'),
     path('email/login/', views.EmailLoginView.as_view(), name='email-login'),
+    path('remember/', views.RememberTokenView.as_view(), name='remember'),
+    path('token-login/', views.TokenLoginView.as_view(), name='token-login'),
     path('admin/users/', admin_user_list, name='admin-user-list'),
     path('admin/users/<int:pk>/', admin_user_detail, name='admin-user-detail'),
 ]

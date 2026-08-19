@@ -70,7 +70,7 @@ async function configureAppChrome() {
 }
 
 onMounted(() => {
-  auth.fetchMe()
+  auth.restoreSession()
   if (isApp.value) appUpdate.check()
   configureAppChrome()
 })

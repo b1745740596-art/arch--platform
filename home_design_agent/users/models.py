@@ -161,3 +161,40 @@ class EmailVerificationCode(models.Model):
         length = getattr(settings, 'EMAIL_CODE_LENGTH', 6)
         upper_bound = 10 ** length
         return str(secrets.randbelow(upper_bound)).zfill(length)
+
+
+class RememberToken(models.Model):
+    """持久登录令牌：客户端关闭后可用令牌恢复 Session 登录。"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='remember_tokens',
+        verbose_name='用户',
+    )
+    token_hash = models.CharField(
+        '令牌摘要', max_length=64, unique=True, db_index=True,
+    )
+    expires_at = models.DateTimeField('过期时间')
+    last_used_at = models.DateTimeField('最近使用时间', null=True, blank=True)
+    revoked_at = models.DateTimeField('注销时间', null=True, blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '持久登录令牌'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.user}@{self.created_at:%Y-%m-%d %H:%M}'
+
+    @property
+    def is_valid(self):
+        return self.revoked_at is None and timezone.now() <= self.expires_at
+
+    @staticmethod
+    def hash_token(raw_token):
+        return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def generate_raw_token():
+        return secrets.token_urlsafe(48)

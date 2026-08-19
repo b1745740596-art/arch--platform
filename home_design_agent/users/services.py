@@ -6,7 +6,12 @@ from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
 
-from .models import EmailVerificationCode, PasswordResetToken, SmsVerificationCode
+from .models import (
+    EmailVerificationCode,
+    PasswordResetToken,
+    RememberToken,
+    SmsVerificationCode,
+)
 from .sms import send_sms_code
 
 PHONE_RE = re.compile(r'^1[3-9]\d{9}$')
@@ -187,3 +192,38 @@ def verify_email_code(email, purpose, raw_code):
     record.used_at = timezone.now()
     record.save(update_fields=['attempts', 'used_at'])
     return record, None
+
+
+def create_remember_token(user):
+    """为用户创建持久登录令牌，返回明文令牌。"""
+    raw_token = RememberToken.generate_raw_token()
+    expires_at = timezone.now() + timedelta(
+        days=getattr(settings, 'REMEMBER_TOKEN_TTL_DAYS', 30),
+    )
+    RememberToken.objects.create(
+        user=user,
+        token_hash=RememberToken.hash_token(raw_token),
+        expires_at=expires_at,
+    )
+    return raw_token
+
+
+def consume_remember_token(raw_token):
+    """校验持久登录令牌并返回用户；无效/过期/已注销返回 None。"""
+    record = RememberToken.objects.filter(
+        token_hash=RememberToken.hash_token(raw_token or ''),
+        revoked_at__isnull=True,
+    ).select_related('user').first()
+    if record is None or not record.is_valid or not record.user.is_active:
+        return None
+    record.last_used_at = timezone.now()
+    record.save(update_fields=['last_used_at'])
+    return record.user
+
+
+def revoke_remember_token(raw_token):
+    """注销指定持久登录令牌。"""
+    RememberToken.objects.filter(
+        token_hash=RememberToken.hash_token(raw_token or ''),
+        revoked_at__isnull=True,
+    ).update(revoked_at=timezone.now())

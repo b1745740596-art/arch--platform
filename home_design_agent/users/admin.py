@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     EmailVerificationCode,
     PasswordResetToken,
+    RememberToken,
     SmsVerificationCode,
     UserProfile,
 )
@@ -41,3 +42,11 @@ class EmailVerificationCodeAdmin(admin.ModelAdmin):
     list_filter = ('purpose', 'used_at')
     search_fields = ('email',)
     readonly_fields = ('code_hash', 'expires_at', 'attempts', 'used_at', 'created_at')
+
+
+@admin.register(RememberToken)
+class RememberTokenAdmin(admin.ModelAdmin):
+    list_display = ('user', 'expires_at', 'last_used_at', 'revoked_at', 'created_at')
+    list_filter = ('revoked_at',)
+    search_fields = ('user__username', 'user__email')
+    readonly_fields = ('token_hash', 'expires_at', 'last_used_at', 'revoked_at', 'created_at')

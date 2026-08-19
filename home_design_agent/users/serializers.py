@@ -400,3 +400,9 @@ class EmailLoginSerializer(serializers.Serializer):
         user = User.objects.create_user(username=username, email=email)
         UserProfile.objects.create(user=user, email_verified=True)
         return user
+
+
+class TokenLoginSerializer(serializers.Serializer):
+    """持久登录令牌：客户端关闭后用于恢复登录。"""
+
+    token = serializers.CharField()

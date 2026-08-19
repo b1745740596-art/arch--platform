@@ -47,13 +47,13 @@ router.beforeEach(async (to) => {
   // App 端去掉营销首页：打开即进入核心生成能力。
   if (isNativeApp() && to.path === '/') {
     const auth = useAuthStore()
-    const user = await auth.fetchMe()
+    const user = await auth.restoreSession()
     if (user) return { path: '/my-home', replace: true }
     return { path: '/login', query: { redirect: '/my-home' }, replace: true }
   }
   if (PUBLIC_PATHS.includes(to.path)) return true
   const auth = useAuthStore()
-  const user = await auth.fetchMe()
+  const user = await auth.restoreSession()
   if (!user) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
