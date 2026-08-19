@@ -27,6 +27,7 @@ export default {
   },
   community: {
     title: 'Inspiration Community',
+    subtitle: 'See what people are decorating',
     furniture: 'Furniture',
     designer: 'Designer',
     contractor: 'Renovation',

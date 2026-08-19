@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import StudioView from './StudioView.vue'
 import RequirementView from './RequirementView.vue'
 import IntakeView from './IntakeView.vue'
+import CommunityFeed from '@/components/CommunityFeed.vue'
 import { useStudioStore } from '@/stores/studio'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
@@ -439,6 +440,7 @@ watch(
       <div v-show="studioExpanded" class="studio-collapse-content">
         <StudioView />
       </div>
+      <CommunityFeed class="studio-community" />
     </div>
 
     <div v-show="tab === 'report'" class="tab-panel">
@@ -868,6 +870,10 @@ watch(
 
 .studio-collapse-content {
   margin-top: 10px;
+}
+
+.studio-community {
+  margin-top: 16px;
 }
 
 .tab-panel { min-width: 0; }

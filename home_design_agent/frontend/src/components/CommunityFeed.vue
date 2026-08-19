@@ -1,9 +1,7 @@
 <script setup>
-import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
-const activeNames = ref(['feed'])
 
 const posts = [
   {
@@ -47,46 +45,40 @@ function toneClass(tone) {
 
 <template>
   <section class="community-feed">
-    <el-collapse v-model="activeNames">
-      <el-collapse-item :title="t('community.title')" name="feed">
-        <div class="post-grid">
-          <article v-for="post in posts" :key="post.title" class="post-card">
-            <div class="post-cover" :class="toneClass(post.tone)">
-              <el-icon><Picture /></el-icon>
-              <span>{{ typeLabel(post.type) }}</span>
-            </div>
-            <div class="post-copy">
-              <b>{{ post.title }}</b>
-              <span class="post-author">{{ post.author }}</span>
-              <p>{{ post.summary }}</p>
-            </div>
-          </article>
+    <header class="community-header">
+      <b>{{ t('community.title') }}</b>
+      <span>{{ t('community.subtitle') }}</span>
+    </header>
+    <div class="post-grid">
+      <article v-for="post in posts" :key="post.title" class="post-card">
+        <div class="post-cover" :class="toneClass(post.tone)">
+          <el-icon><Picture /></el-icon>
+          <span>{{ typeLabel(post.type) }}</span>
         </div>
-      </el-collapse-item>
-    </el-collapse>
+        <div class="post-copy">
+          <b>{{ post.title }}</b>
+          <span class="post-author">{{ post.author }}</span>
+          <p>{{ post.summary }}</p>
+        </div>
+      </article>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.community-feed { margin: 0 0 14px; }
-.community-feed :deep(.el-collapse) {
-  border: 1px solid var(--app-border);
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--app-surface);
+.community-feed { margin: 0; }
+
+.community-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 4px 2px;
 }
-.community-feed :deep(.el-collapse-item__header) {
-  padding: 12px 14px;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--brand-green-deep);
-  background: #fff;
-}
-.community-feed :deep(.el-collapse-item__content) {
-  padding: 0 10px 10px;
-  max-height: 40vh;
-  overflow-y: auto;
-}
+
+.community-header b { font-size: 16px; color: var(--brand-green-deep); }
+.community-header span { font-size: 12px; color: var(--brand-muted); }
 
 .post-grid {
   display: grid;

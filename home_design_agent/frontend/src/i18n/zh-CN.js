@@ -27,6 +27,7 @@ export default {
   },
   community: {
     title: '灵感社区',
+    subtitle: '看看大家最近在装什么',
     furniture: '家具推荐',
     designer: '设计师推荐',
     contractor: '施工经验',
