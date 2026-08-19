@@ -6,7 +6,7 @@ import { api } from '@/api/client'
 import { useStudioStore } from '@/stores/studio'
 import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
-import { canSelectModule, validateImageFile } from '@/utils/validation'
+import { validateImageFile } from '@/utils/validation'
 
 const studio = useStudioStore()
 const { t } = useI18n()
@@ -15,7 +15,7 @@ const term = useTerm()
 const steps = [
   { key: 'upload', labelKey: 'plan.stepUpload' },
   { key: 'config', labelKey: 'plan.stepConfig' },
-  { key: 'modules', labelKey: 'plan.stepModules' },
+  { key: 'modules', labelKey: 'plan.stepPack' },
   { key: 'review', labelKey: 'plan.stepReview' },
 ]
 
@@ -44,6 +44,62 @@ const selectedRecord = computed(
   () => records.value.find((record) => record.id === selectedRecordId.value) || records.value[0] || null,
 )
 
+function packStorageKey(pid) {
+  return `archai.project.pack.${pid}`
+}
+
+function readStoredPack(pid) {
+  if (!pid) return []
+  try {
+    const value = JSON.parse(localStorage.getItem(packStorageKey(pid)) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch {
+    return []
+  }
+}
+
+function saveStoredPack(pid, codes) {
+  if (!pid) return
+  try {
+    localStorage.setItem(packStorageKey(pid), JSON.stringify(codes || []))
+  } catch {
+    // localStorage 不可用时只影响跨会话复用，不影响本次流程。
+  }
+}
+
+function rollInspirationPack() {
+  const selected = []
+  const groups = studio.modulesByGroup || []
+  for (const group of groups) {
+    if (selected.length >= studio.maxModules) break
+    const candidates = [...(group.modules || [])]
+    if (!candidates.length) continue
+    const isSingle = group.multiple === false || group.max_select === 1
+    const take = isSingle ? 1 : Math.min(group.max_select || 2, candidates.length)
+    const shuffled = candidates.sort(() => Math.random() - 0.5)
+    for (const module of shuffled) {
+      if (selected.length >= studio.maxModules) break
+      if (selected.includes(module.code)) continue
+      selected.push(module.code)
+      if (selected.length >= Math.min(take, studio.maxModules)) break
+    }
+    if (selected.length >= studio.maxModules) break
+  }
+  return selected
+}
+
+const packLocked = computed(
+  () => Boolean(projectId.value && readStoredPack(projectId.value).length),
+)
+
+function moduleName(code) {
+  return studio.modules.find((module) => module.code === code)?.name || code
+}
+
+function rollPack() {
+  draft.moduleCodes = rollInspirationPack()
+}
+
 function recordName(record) {
   return record.room_type ? term(record.room_type) : t('plan.unnamed')
 }
@@ -57,14 +113,17 @@ function ensureDraftDefaults() {
   draft.room_type = draft.room_type || preset.room_type
   draft.style = draft.style || preset.style
   draft.budget_tier = draft.budget_tier || preset.budget_tier
-  draft.moduleCodes = draft.moduleCodes.length ? [...draft.moduleCodes] : [...(preset.moduleCodes || [])]
+  const storedPack = projectId.value ? readStoredPack(projectId.value) : []
+  draft.moduleCodes = draft.moduleCodes.length
+    ? [...draft.moduleCodes]
+    : [...(storedPack.length ? storedPack : rollInspirationPack())]
   draft.workflowId = draft.workflowId ?? preset.workflowId
 }
 
 onMounted(async () => {
+  if (!projectId.value) projectId.value = studio.sessionProjectId || null
   await studio.loadOptions()
   ensureDraftDefaults()
-  if (!projectId.value) projectId.value = studio.sessionProjectId || null
 })
 
 function releaseDraftPreview() {
@@ -234,6 +293,9 @@ async function generate() {
       created_at: new Date().toISOString(),
     })
     selectedRecordId.value = records.value[0].id
+    if (projectId.value && !readStoredPack(projectId.value).length) {
+      saveStoredPack(projectId.value, draft.moduleCodes)
+    }
     ElMessage.success(t('plan.recordAdded', { room: recordName({ room_type: draft.room_type }) }))
     resetDraft()
     step.value = 0
@@ -403,25 +465,38 @@ async function packageRecords() {
         </div>
 
         <div v-show="step === 2" class="step-panel">
-          <div class="modules-head">
-            <span>{{ t('win.diverge') }}</span>
-            <el-tag size="small" type="info" effect="plain">{{ draft.moduleCodes.length }} / {{ studio.maxModules }}</el-tag>
-          </div>
-          <div v-for="group in studio.modulesByGroup" :key="group.key" class="module-group">
-            <div class="module-group-head">
-              <b>{{ term(group.label) || group.key }}</b>
-              <small>{{ groupHint(group) }}</small>
+          <div class="pack-card">
+            <div class="pack-head">
+              <div>
+                <b>{{ t('plan.packTitle') }}</b>
+                <small>{{ t('plan.packHint') }}</small>
+              </div>
+              <el-tag size="small" type="info" effect="plain">{{ draft.moduleCodes.length }} / {{ studio.maxModules }}</el-tag>
             </div>
-            <div class="module-tags">
-              <el-check-tag
-                v-for="module in group.modules"
-                :key="module.code"
-                :checked="isModuleSelected(module.code)"
-                @change="toggleModule(module)"
+
+            <el-alert
+              v-if="packLocked"
+              type="success"
+              :closable="false"
+              :title="t('plan.packLocked')"
+            />
+
+            <div class="pack-tags">
+              <el-tag
+                v-for="code in draft.moduleCodes"
+                :key="code"
+                size="small"
+                effect="plain"
+                type="success"
               >
-                {{ module.name }}
-              </el-check-tag>
+                {{ moduleName(code) }}
+              </el-tag>
             </div>
+
+            <el-button v-if="!packLocked" type="primary" plain @click="rollPack">
+              <el-icon><Refresh /></el-icon>
+              {{ t('plan.rollPack') }}
+            </el-button>
           </div>
         </div>
 
@@ -671,6 +746,22 @@ async function packageRecords() {
 .module-group-head b { font-size: 13px; }
 .module-group-head small { color: var(--brand-muted); font-size: 11px; }
 .module-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.pack-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--brand-green-soft);
+  border: 1px solid rgba(35, 169, 124, 0.10);
+}
+
+.pack-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.pack-head b { display: block; font-size: 15px; color: var(--brand-green-deep); }
+.pack-head small { display: block; margin-top: 3px; color: var(--brand-muted); font-size: 12px; line-height: 1.5; }
+
+.pack-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .review-card {
   display: flex;
