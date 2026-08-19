@@ -39,6 +39,23 @@ jobs:
         working-directory: home_design_agent/frontend
         run: npx cap sync android
 
+      - name: Apply version metadata
+        working-directory: home_design_agent/frontend
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          cfg = json.loads(pathlib.Path('capacitor.config.json').read_text())
+          rel = json.loads(pathlib.Path('../app_release.json').read_text())
+          version = cfg.get('version', '1.0.0')
+          build = int(rel.get('build', 1))
+          gradle = pathlib.Path('android/app/build.gradle')
+          text = gradle.read_text()
+          text = re.sub(r'versionCode\s+\d+', f'versionCode {build}', text, count=1)
+          text = re.sub(r'versionName\s+"[^"]*"', f'versionName "{version}"', text, count=1)
+          gradle.write_text(text)
+          print('versionCode', build, 'versionName', version)
+          PY
+
       - name: Build debug APK
         working-directory: home_design_agent/frontend/android
         run: ./gradlew assembleDebug --no-daemon
