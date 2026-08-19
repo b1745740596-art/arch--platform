@@ -6,6 +6,7 @@ import { useStudioStore } from '@/stores/studio'
 import { clampModuleCodes } from '@/utils/validation'
 import { isNativeApp } from '@/utils/app'
 import StudioWindowCard from '@/components/StudioWindowCard.vue'
+import PlanWorkspace from '@/components/PlanWorkspace.vue'
 
 const studio = useStudioStore()
 const { t } = useI18n()
@@ -23,7 +24,7 @@ onMounted(async () => {
   // store 为应用级单例：重新进入时补回预览 URL
   studio.rehydratePreviews()
   await studio.loadOptions()
-  if (!studio.windows.length) studio.addWindow()
+  if (!isApp.value && !studio.windows.length) studio.addWindow()
 })
 
 // 离开页面时释放预览 URL 并取消进行中的请求，避免内存泄漏
@@ -95,8 +96,11 @@ function closeAll() {
 
 <template>
   <div class="studio" :class="{ 'is-app': isApp }">
-    <!-- 顶部工具栏 -->
-    <el-card v-if="!isApp" shadow="never" class="toolbar">
+    <PlanWorkspace v-if="isApp" />
+
+    <template v-else>
+      <!-- 顶部工具栏 -->
+      <el-card v-if="!isApp" shadow="never" class="toolbar">
       <div class="tb">
         <div class="tb-l">
           <h3 class="tb-title">{{ t('studio.title') }}</h3>
@@ -169,6 +173,7 @@ function closeAll() {
     </el-row>
 
     <el-empty v-if="!studio.windows.length" :description="t('studio.emptyBoard')" />
+    </template>
   </div>
 </template>
 
