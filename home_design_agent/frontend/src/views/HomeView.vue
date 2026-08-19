@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { ElMessageBox } from 'element-plus'
 import { currentLocale } from '@/i18n'
 import { useHealthStore } from '@/stores/health'
 import IphoneMock from '@/components/IphoneMock.vue'
@@ -9,7 +10,58 @@ import IphoneMock from '@/components/IphoneMock.vue'
 const router = useRouter()
 const health = useHealthStore()
 const { t } = useI18n()
-onMounted(() => health.check())
+const deferredPrompt = ref(null)
+const installable = ref(false)
+
+const isStandalone = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  window.navigator.standalone === true
+
+const isIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
+
+const showInstall = computed(() => installable.value && !isStandalone())
+const showInstallButton = computed(() => !isStandalone())
+
+function onBeforeInstallPrompt(event) {
+  event.preventDefault()
+  deferredPrompt.value = event
+  installable.value = true
+}
+
+async function installApp() {
+  if (deferredPrompt.value) {
+    deferredPrompt.value.prompt()
+    await deferredPrompt.value.userChoice
+    deferredPrompt.value = null
+    installable.value = false
+    return
+  }
+
+  if (isIOS()) {
+    await ElMessageBox.alert(
+      t('home.installIOS'),
+      t('home.installTitle'),
+      { confirmButtonText: t('home.installOk') },
+    )
+    return
+  }
+
+  await ElMessageBox.alert(
+    t('home.installBrowser'),
+    t('home.installTitle'),
+    { confirmButtonText: t('home.installOk') },
+  )
+}
+
+onMounted(() => {
+  health.check()
+  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+})
 
 const steps = [
   { icon: 'UploadFilled', key: 'upload', tone: 'green' },
@@ -45,6 +97,10 @@ const showcase = [
           <el-button class="ghost-cta" size="large" @click="router.push('/my-home')">
             {{ t('home.ctaSecondary') }}
             <el-icon><ArrowRight /></el-icon>
+          </el-button>
+          <el-button v-if="showInstallButton" class="install-cta" size="large" @click="installApp">
+            <el-icon><Download /></el-icon>
+            {{ t('home.installButton') }}
           </el-button>
         </div>
         <div class="hero-chips">
@@ -214,6 +270,12 @@ const showcase = [
 .ghost-cta {
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(47, 107, 79, 0.16);
+  color: var(--brand-green-deep);
+}
+
+.install-cta {
+  background: rgba(47, 107, 79, 0.10);
+  border: 1px dashed rgba(47, 107, 79, 0.40);
   color: var(--brand-green-deep);
 }
 
