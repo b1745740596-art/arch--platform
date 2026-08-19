@@ -4,19 +4,25 @@ import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { SUPPORTED_LOCALES, currentLocale, elementLocale, setLocale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { appDefaultRoute, isNativeApp } from '@/utils/app'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
 
+const isApp = computed(() => isNativeApp())
+const defaultPath = computed(() => appDefaultRoute())
+const logoutPath = computed(() => (isApp.value ? '/login' : '/'))
+
 const navItems = computed(() => {
-  const items = [
-    { path: '/', key: 'nav.home', icon: 'HomeFilled' },
-    { path: '/my-home', key: 'nav.myHome', icon: 'House' },
-    { path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' },
-    { path: '/intake', key: 'nav.intake', icon: 'UploadFilled' },
-  ]
+  const items = []
+  if (!isApp.value) {
+    items.push({ path: '/', key: 'nav.home', icon: 'HomeFilled' })
+  }
+  items.push({ path: '/my-home', key: 'nav.myHome', icon: 'House' })
+  items.push({ path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' })
+  items.push({ path: '/intake', key: 'nav.intake', icon: 'UploadFilled' })
   if (auth.user) {
     items.push({ path: '/billing', key: 'nav.billing', icon: 'Wallet' })
   }
@@ -43,7 +49,7 @@ function switchLocale(locale) {
 
 async function doLogout() {
   await auth.logout()
-  router.push('/')
+  router.push(logoutPath.value)
 }
 
 onMounted(() => {
@@ -53,10 +59,10 @@ onMounted(() => {
 
 <template>
   <el-config-provider :locale="elementLocale">
-    <div class="app">
-      <header class="topbar">
+    <div class="app" :class="{ 'is-app': isApp }">
+      <header class="topbar" :class="{ 'is-app': isApp }">
         <div class="topbar-inner">
-          <router-link class="brand" to="/">
+          <router-link class="brand" :to="defaultPath">
             <span class="brand-mark" aria-hidden="true">
               <svg viewBox="0 0 40 40" fill="none">
                 <rect x="3" y="3" width="34" height="34" rx="11" fill="#2f6b4f" />
@@ -70,7 +76,7 @@ onMounted(() => {
             </span>
           </router-link>
 
-          <nav class="nav" aria-label="Main navigation">
+          <nav v-if="!isApp" class="nav" aria-label="Main navigation">
             <router-link
               v-for="item in navItems"
               :key="item.path"
@@ -113,7 +119,15 @@ onMounted(() => {
                 </div>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
+                    <template v-if="isApp">
+                      <el-dropdown-item @click="router.push('/my-home')">{{ t('nav.myHome') }}</el-dropdown-item>
+                      <el-dropdown-item @click="router.push('/requirement')">{{ t('nav.requirement') }}</el-dropdown-item>
+                      <el-dropdown-item @click="router.push('/intake')">{{ t('nav.intake') }}</el-dropdown-item>
+                      <el-dropdown-item divided @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
+                    </template>
+                    <template v-else>
+                      <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
+                    </template>
                     <el-dropdown-item @click="router.push('/billing')">{{ t('nav.billing') }}</el-dropdown-item>
                     <el-dropdown-item
                       v-if="auth.user.is_staff || auth.user.is_superuser"
@@ -148,7 +162,7 @@ onMounted(() => {
         </RouterView>
       </main>
 
-      <footer class="app-footer">
+      <footer v-if="!isApp" class="app-footer">
         <div class="footer-inner">
           <span class="footer-dot"></span>
           <span>{{ t('footer') }}</span>
@@ -379,6 +393,39 @@ onMounted(() => {
 .page-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+/* App 端（Capacitor / 原生壳）：更像移动端首页，去掉营销型布局的余量，
+   让核心功能尽量顶到首屏。 */
+.app.is-app .topbar.is-app {
+  background: rgba(246, 241, 232, 0.92);
+}
+
+.app.is-app .topbar.is-app .topbar-inner {
+  max-width: none;
+  padding: 10px 14px;
+  gap: 12px;
+}
+
+.app.is-app .topbar.is-app .brand-mark {
+  width: 36px;
+  height: 36px;
+}
+
+.app.is-app .topbar.is-app .brand-copy b { font-size: 15px; }
+
+.app.is-app .topbar.is-app .nav {
+  justify-content: flex-start;
+  gap: 2px;
+}
+
+.app.is-app .topbar.is-app .nav-item {
+  padding: 7px 10px;
+}
+
+.app.is-app .app-main {
+  max-width: none;
+  padding: 12px 12px 20px;
 }
 
 @media (max-width: 860px) {

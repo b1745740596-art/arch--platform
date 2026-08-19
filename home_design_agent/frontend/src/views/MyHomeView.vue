@@ -7,6 +7,7 @@ import { useStudioStore } from '@/stores/studio'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
+import { isNativeApp } from '@/utils/app'
 
 const { t } = useI18n()
 const term = useTerm()
@@ -20,6 +21,8 @@ const ordersLoading = ref(false)
 const orderSubmitting = ref(false)
 const combining = ref(false)
 const selectedReportId = ref(null)
+
+const isApp = computed(() => isNativeApp())
 
 const TABS = [
   { key: 'studio', icon: 'Grid', labelKey: 'myHome.tabStudio' },
@@ -310,8 +313,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="my-home">
-    <section class="home-head">
+  <div class="my-home" :class="{ 'is-app': isApp }">
+    <section v-if="!isApp" class="home-head">
       <div class="head-copy">
         <span class="eyebrow">
           <span class="eyebrow-dot"></span>
@@ -339,7 +342,7 @@ onMounted(() => {
       </div>
     </section>
 
-    <div class="segmented">
+    <div class="segmented" :class="{ 'is-app': isApp }">
       <button
         v-for="item in TABS"
         :key="item.key"
@@ -628,6 +631,27 @@ onMounted(() => {
   background: linear-gradient(135deg, #3b7a5b, #2f6b4f);
   color: #fff;
   box-shadow: 0 7px 16px rgba(47, 107, 79, 0.20);
+}
+
+/* App 端：去掉营销头部后，让核心生成区直接顶到首屏，
+   分段导航更像滴滴 App 的首屏快捷入口。 */
+.my-home.is-app {
+  gap: 12px;
+}
+
+.my-home.is-app .segmented.is-app {
+  position: sticky;
+  top: 68px;
+  z-index: 20;
+  align-self: stretch;
+  justify-content: space-between;
+  border-radius: 18px;
+}
+
+.my-home.is-app .seg-item {
+  flex: 1;
+  justify-content: center;
+  padding: 10px 12px;
 }
 
 .tab-panel { min-width: 0; }

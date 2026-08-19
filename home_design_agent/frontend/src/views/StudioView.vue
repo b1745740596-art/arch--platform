@@ -4,10 +4,12 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useStudioStore } from '@/stores/studio'
 import { clampModuleCodes } from '@/utils/validation'
+import { isNativeApp } from '@/utils/app'
 import StudioWindowCard from '@/components/StudioWindowCard.vue'
 
 const studio = useStudioStore()
 const { t } = useI18n()
+const isApp = computed(() => isNativeApp())
 
 // 宽屏两列：按索引奇偶拆分，保证卡片高度不一致时也不会互相拉扯
 const leftColumn = computed(() => studio.windows.filter((_, i) => i % 2 === 0))
@@ -92,9 +94,9 @@ function closeAll() {
 </script>
 
 <template>
-  <div class="studio">
+  <div class="studio" :class="{ 'is-app': isApp }">
     <!-- 顶部工具栏 -->
-    <el-card shadow="never" class="toolbar">
+    <el-card v-if="!isApp" shadow="never" class="toolbar">
       <div class="tb">
         <div class="tb-l">
           <h3 class="tb-title">{{ t('studio.title') }}</h3>

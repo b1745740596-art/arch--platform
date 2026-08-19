@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/api/client'
+import { appDefaultRoute } from '@/utils/app'
 
 const route = useRoute()
 const router = useRouter()
@@ -111,7 +112,7 @@ async function submit() {
   try {
     await auth.login({ username: form.username.trim(), password: form.password })
     ElMessage.success(t('auth.loginSuccess'))
-    router.push(route.query.redirect || '/')
+    router.push(route.query.redirect || appDefaultRoute())
   } catch (e) {
     const data = e?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
@@ -127,7 +128,7 @@ async function submitPhone() {
   try {
     await auth.phoneLogin({ phone: phoneForm.phone.trim(), code: phoneForm.code.trim() })
     ElMessage.success(t('auth.loginSuccess'))
-    router.push(route.query.redirect || '/')
+    router.push(route.query.redirect || appDefaultRoute())
   } catch (e) {
     const data = e?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
@@ -162,7 +163,7 @@ async function submitEmail() {
   try {
     await auth.emailLogin({ email: emailForm.email.trim(), code: emailForm.code.trim() })
     ElMessage.success(t('auth.loginSuccess'))
-    router.push(route.query.redirect || '/')
+    router.push(route.query.redirect || appDefaultRoute())
   } catch (e) {
     const data = e?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : e.message)
