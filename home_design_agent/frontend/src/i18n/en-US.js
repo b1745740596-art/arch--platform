@@ -152,7 +152,7 @@ export default {
     subtitle: 'My Home · One-stop design studio',
     description: 'Generate parallel schemes, budget advice, furniture lists and designer/contractor matches — all compiled into an order-ready report.',
     newTask: 'New generation task',
-    tabStudio: 'My Plans',
+    tabStudio: 'Tap to start designing',
     tabReport: 'My History',
     tabOrders: 'Orders',
     tabRequirementInfo: 'Requirements',

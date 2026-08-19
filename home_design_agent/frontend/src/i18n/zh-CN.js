@@ -150,7 +150,7 @@ export default {
     subtitle: '我的家 · 一站式装修设计',
     description: '多窗口生成方案、预算建议、家具清单与设计师/施工队推荐，汇总为可下单的报告书。',
     newTask: '新建生成任务',
-    tabStudio: '我的计划',
+    tabStudio: '点击这里，开始设计您的家',
     tabReport: '我的历史计划',
     tabOrders: '项目订单',
     tabRequirementInfo: '需求信息',
