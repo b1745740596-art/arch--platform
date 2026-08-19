@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useStudioStore, STATUS_META } from '@/stores/studio'
 import { useTerm } from '@/i18n'
+import { resolveMediaUrl } from '@/utils/media'
 import {
   canSelectModule,
   clampModuleCodes,
@@ -30,7 +31,9 @@ const busy = computed(() => ['running', 'queued', 'validating'].includes(props.w
 const imageTip = computed(() => describeImageRules(studio.imageRules))
 const result = computed(() => props.win.result)
 const furnitures = computed(() => result.value?.furnitures || [])
-const furnitureImages = computed(() => furnitures.value.map((f) => f.image_url).filter(Boolean))
+const furnitureImages = computed(() =>
+  furnitures.value.map((f) => resolveMediaUrl(f.image_url)).filter(Boolean),
+)
 const appliedModules = computed(() => result.value?.applied_modules || [])
 // 当前选中的工作流与其生图模式（img2img 会把上传照片作为参考图）
 const selectedWorkflow = computed(() => studio.workflowById(props.win.workflowId))
@@ -408,12 +411,12 @@ function groupHint(group) {
           <el-col v-for="f in furnitures" :key="f.id" :span="12">
             <el-card shadow="hover" class="fur" body-style="padding:8px">
               <el-image
-                v-if="f.image_url"
-                :src="f.image_url"
+                v-if="resolveMediaUrl(f.image_url)"
+                :src="resolveMediaUrl(f.image_url)"
                 fit="cover"
                 class="fur-img"
                 :preview-src-list="furnitureImages"
-                :initial-index="furnitureImages.indexOf(f.image_url)"
+                :initial-index="furnitureImages.indexOf(resolveMediaUrl(f.image_url))"
                 preview-teleported
               >
                 <template #error>

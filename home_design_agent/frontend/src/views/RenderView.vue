@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api/client'
 import { useTerm } from '@/i18n'
+import { resolveMediaUrl } from '@/utils/media'
 
 const { t } = useI18n()
 const term = useTerm()
@@ -83,7 +84,9 @@ function money(v) {
   return v == null ? t('common.dash') : '¥' + Number(v).toLocaleString()
 }
 const furnitures = computed(() => result.value?.furnitures || [])
-const furnitureImages = computed(() => furnitures.value.map((f) => f.image_url).filter(Boolean))
+const furnitureImages = computed(() =>
+  furnitures.value.map((f) => resolveMediaUrl(f.image_url)).filter(Boolean),
+)
 </script>
 
 <template>
@@ -162,12 +165,12 @@ const furnitureImages = computed(() => furnitures.value.map((f) => f.image_url).
             <el-col v-for="f in furnitures" :key="f.id" :xs="12" :sm="8">
               <el-card shadow="hover" class="fur" body-style="padding:10px">
                 <el-image
-                  v-if="f.image_url"
-                  :src="f.image_url"
+                  v-if="resolveMediaUrl(f.image_url)"
+                  :src="resolveMediaUrl(f.image_url)"
                   fit="cover"
                   class="fur-img"
                   :preview-src-list="furnitureImages"
-                  :initial-index="furnitureImages.indexOf(f.image_url)"
+                  :initial-index="furnitureImages.indexOf(resolveMediaUrl(f.image_url))"
                   preview-teleported
                 >
                   <template #error>

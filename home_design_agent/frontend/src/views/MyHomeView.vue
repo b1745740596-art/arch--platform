@@ -6,6 +6,7 @@ import StudioView from './StudioView.vue'
 import { useStudioStore } from '@/stores/studio'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
+import { resolveMediaUrl } from '@/utils/media'
 
 const { t } = useI18n()
 const term = useTerm()
@@ -45,6 +46,12 @@ const selectedReport = computed(
 )
 
 const reportData = computed(() => selectedReport.value?.report || {})
+const reportFurnitures = computed(() =>
+  (reportData.value.furnitures || []).map((f) => ({
+    ...f,
+    image_url: resolveMediaUrl(f.image_url),
+  })),
+)
 
 const reportStatusType = computed(() => (selectedReport.value?.status === 'ordered' ? 'success' : 'info'))
 
@@ -89,7 +96,7 @@ function normalizeFurnitures(list) {
     category_display: f.category_display,
     price: f.price,
     buy_url: f.buy_url,
-    image_url: f.image_url,
+    image_url: resolveMediaUrl(f.image_url),
   }))
 }
 
@@ -103,7 +110,7 @@ function windowSnapshot(win) {
     room_type: win.form.room_type,
     style: win.form.style,
     budget_tier: win.form.budget_tier,
-    result_url: result?.result_url || result?.result_image_url || null,
+    result_url: resolveMediaUrl(result?.result_url || result?.result_image_url),
     design_note: result?.design_note || '',
     furnitures,
     designer: result?.designer || null,
@@ -396,8 +403,8 @@ onMounted(() => {
             <el-tag :type="reportStatusType">{{ selectedReport.status_display }}</el-tag>
           </div>
 
-          <div v-if="reportData.result_url" class="report-hero">
-            <img :src="reportData.result_url" :alt="selectedReport.title" />
+          <div v-if="resolveMediaUrl(reportData.result_url)" class="report-hero">
+            <img :src="resolveMediaUrl(reportData.result_url)" :alt="selectedReport.title" />
           </div>
           <div v-else class="report-hero report-hero-empty">
             <el-icon><Picture /></el-icon>
@@ -408,7 +415,7 @@ onMounted(() => {
             <h3><el-icon><Grid /></el-icon> {{ t('myHome.windowSchemes') }}</h3>
             <div class="window-grid">
               <div v-for="(w, index) in reportData.windows" :key="`${w.title}-${index}`" class="window-card">
-                <img v-if="w.result_url" :src="w.result_url" :alt="w.title" />
+                <img v-if="resolveMediaUrl(w.result_url)" :src="resolveMediaUrl(w.result_url)" :alt="w.title" />
                 <div v-else class="window-ph"><el-icon><Picture /></el-icon></div>
                 <div class="window-info">
                   <b>{{ w.title }}</b>
@@ -440,8 +447,8 @@ onMounted(() => {
 
           <section class="report-section">
             <h3><el-icon><ShoppingCart /></el-icon> {{ t('myHome.furnitureList') }}</h3>
-            <div v-if="reportData.furnitures?.length" class="furniture-grid">
-              <div v-for="f in reportData.furnitures" :key="f.id" class="furniture-item">
+            <div v-if="reportFurnitures.length" class="furniture-grid">
+              <div v-for="f in reportFurnitures" :key="f.id" class="furniture-item">
                 <img v-if="f.image_url" :src="f.image_url" :alt="f.name" />
                 <div v-else class="furniture-ph"><el-icon><Picture /></el-icon></div>
                 <div class="furniture-info">

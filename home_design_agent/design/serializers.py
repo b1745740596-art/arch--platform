@@ -203,12 +203,15 @@ class FurnitureSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_image_url(self, obj):
-        """商品图地址：优先本地图片文件，无图返回 None 由前端占位。"""
+        """商品图地址：优先本地图片文件，无图返回 None 由前端占位。
+
+        返回站点相对路径（如 /media/furniture/xxx.png）而不是拼接请求 Host
+        的绝对地址。前端与图片同域部署，相对地址可随当前访问域名自适应，
+        避免报告里存下 localhost / 内网 IP 等失效链接。
+        """
         if not obj.image:
             return None
-        request = self.context.get('request')
-        url = obj.image.url
-        return request.build_absolute_uri(url) if request else url
+        return obj.image.url
 
 
 class WorkflowStepSerializer(serializers.ModelSerializer):
