@@ -25,13 +25,10 @@ const records = ref([])
 const projectId = ref(studio.sessionProjectId || null)
 const projectName = ref('')
 const selectedRecordId = ref(null)
-const uploadRef = ref(null)
 
 const draft = reactive({
   plan_name: '',
-  file: null,
-  previewUrl: '',
-  imageMeta: null,
+  images: [],
   imageErrors: [],
   room_type: '',
   style: '',
@@ -129,18 +126,15 @@ onMounted(async () => {
   ensureDraftDefaults()
 })
 
-function releaseDraftPreview() {
-  if (draft.previewUrl) {
-    URL.revokeObjectURL(draft.previewUrl)
-    draft.previewUrl = ''
+function releaseDraftImages() {
+  for (const image of draft.images) {
+    if (image.url) URL.revokeObjectURL(image.url)
   }
+  draft.images = []
 }
 
 function resetDraft() {
-  releaseDraftPreview()
-  draft.file = null
-  draft.previewUrl = ''
-  draft.imageMeta = null
+  releaseDraftImages()
   draft.imageErrors = []
   draft.room_type = ''
   draft.style = ''
@@ -149,11 +143,10 @@ function resetDraft() {
   draft.moduleCodes = []
   draft.workflowId = null
   ensureDraftDefaults()
-  uploadRef.value?.clearFiles()
 }
 
 function uploadValid() {
-  return Boolean(draft.plan_name.trim() && draft.file && !draft.imageErrors.length)
+  return Boolean(draft.plan_name.trim() && draft.images.length && !draft.imageErrors.length)
 }
 
 function configValid() {
@@ -187,33 +180,34 @@ function goToStep(index) {
   if (index < step.value) step.value = index
 }
 
+const MAX_UPLOAD_IMAGES = 8
+
 function onFileChange(file) {
   const raw = file?.raw
   if (!raw) return
+  if (draft.images.length >= MAX_UPLOAD_IMAGES) {
+    ElMessage.warning(t('plan.uploadLimit', { max: MAX_UPLOAD_IMAGES }))
+    return
+  }
   draft.imageErrors = []
   validateImageFile(raw, studio.imageRules).then(({ ok, errors, meta }) => {
     if (!ok) {
-      releaseDraftPreview()
-      draft.file = null
-      draft.imageMeta = null
       draft.imageErrors = errors
-      uploadRef.value?.clearFiles()
       ElMessage.error(errors[0])
       return
     }
-    releaseDraftPreview()
-    draft.file = raw
-    draft.previewUrl = URL.createObjectURL(raw)
-    draft.imageMeta = meta
+    draft.images.push({
+      file: raw,
+      url: URL.createObjectURL(raw),
+      meta,
+    })
   })
 }
 
-function removeImage() {
-  releaseDraftPreview()
-  draft.file = null
-  draft.imageMeta = null
+function removeImage(index) {
+  const [removed] = draft.images.splice(index, 1)
+  if (removed?.url) URL.revokeObjectURL(removed.url)
   draft.imageErrors = []
-  uploadRef.value?.clearFiles()
 }
 
 async function ensureProject() {
@@ -234,36 +228,43 @@ async function generate() {
   submitting.value = true
   try {
     const pid = await ensureProject()
-    const fd = new FormData()
-    fd.append('project', pid)
-    fd.append('room_type', draft.room_type)
-    fd.append('style', draft.style)
-    fd.append('budget_tier', draft.budget_tier)
-    fd.append('requirement', draft.requirement || '')
-    fd.append('raw_photo', draft.file)
-    if (draft.moduleCodes.length) fd.append('module_codes', draft.moduleCodes.join(','))
-    if (draft.workflowId != null) fd.append('workflow', draft.workflowId)
+    const created = []
+    for (let index = 0; index < draft.images.length; index += 1) {
+      const image = draft.images[index]
+      const fd = new FormData()
+      fd.append('project', pid)
+      fd.append('room_type', draft.room_type)
+      fd.append('style', draft.style)
+      fd.append('budget_tier', draft.budget_tier)
+      fd.append('requirement', draft.requirement || '')
+      fd.append('raw_photo', image.file)
+      if (draft.moduleCodes.length) fd.append('module_codes', draft.moduleCodes.join(','))
+      if (draft.workflowId != null) fd.append('workflow', draft.workflowId)
 
-    const result = await api.createRender(fd)
-    if (result?.status === 'failed') {
-      ElMessage.error(result.error || t('common.unknownError'))
-      return
+      const result = await api.createRender(fd)
+      if (result?.status === 'failed') {
+        ElMessage.error(result.error || t('common.unknownError'))
+        continue
+      }
+
+      const record = {
+        id: `${result.id || Date.now()}-${records.value.length}`,
+        title: recordName({ room_type: draft.room_type }),
+        room_type: draft.room_type,
+        style: draft.style,
+        budget_tier: draft.budget_tier,
+        result,
+        created_at: new Date().toISOString(),
+      }
+      records.value.unshift(record)
+      created.push(record)
     }
 
-    records.value.unshift({
-      id: `${result.id || Date.now()}-${records.value.length}`,
-      title: recordName({ room_type: draft.room_type }),
-      room_type: draft.room_type,
-      style: draft.style,
-      budget_tier: draft.budget_tier,
-      result,
-      created_at: new Date().toISOString(),
-    })
-    selectedRecordId.value = records.value[0].id
-    if (projectId.value && !readStoredPack(projectId.value).length) {
+    if (created.length && projectId.value && !readStoredPack(projectId.value).length) {
       saveStoredPack(projectId.value, draft.moduleCodes)
     }
-    ElMessage.success(t('plan.recordAdded', { room: recordName({ room_type: draft.room_type }) }))
+    if (created.length) selectedRecordId.value = records.value[0].id
+    ElMessage.success(t('plan.batchAdded', { count: created.length }))
     resetDraft()
     step.value = 0
   } catch (error) {
@@ -381,28 +382,56 @@ async function packageRecords() {
               :placeholder="t('plan.namePlaceholder')"
             />
           </div>
+          <div v-if="draft.images.length" class="upload-grid">
+            <div v-for="(image, index) in draft.images" :key="image.url" class="upload-tile">
+              <img :src="image.url" alt="" />
+              <span>{{ image.meta.width }}×{{ image.meta.height }}px · {{ (image.meta.size / 1024 / 1024).toFixed(2) }}MB</span>
+              <el-button
+                size="small"
+                circle
+                type="danger"
+                class="upload-remove"
+                @click="removeImage(index)"
+              >
+                <el-icon><Close /></el-icon>
+              </el-button>
+            </div>
+            <el-upload
+              v-if="draft.images.length < MAX_UPLOAD_IMAGES"
+              class="upload-add"
+              :auto-upload="false"
+              :show-file-list="false"
+              :multiple="true"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+              :on-change="onFileChange"
+            >
+              <div class="add-tile">
+                <el-icon><Plus /></el-icon>
+                <span>{{ t('plan.addMore') }}</span>
+              </div>
+            </el-upload>
+          </div>
           <el-upload
-            ref="uploadRef"
+            v-else
             drag
             :auto-upload="false"
-            :limit="1"
             :show-file-list="false"
+            :multiple="true"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
             :on-change="onFileChange"
           >
-            <div v-if="draft.previewUrl" class="preview-wrap">
-              <img :src="draft.previewUrl" class="preview-img" alt="preview" />
-            </div>
-            <div v-else class="upload-empty">
+            <div class="upload-empty">
               <el-icon class="upload-ic"><UploadFilled /></el-icon>
               <div>{{ t('win.uploadHint') }}</div>
               <small>{{ t('win.uploadTip') }}</small>
             </div>
           </el-upload>
-          <div v-if="draft.imageMeta" class="image-meta">
-            <span>{{ draft.imageMeta.width }}×{{ draft.imageMeta.height }}px · {{ (draft.imageMeta.size / 1024 / 1024).toFixed(2) }}MB</span>
-            <el-button size="small" text type="danger" @click="removeImage">{{ t('common.remove') }}</el-button>
-          </div>
+          <el-alert
+            v-if="draft.imageErrors.length"
+            type="error"
+            :closable="false"
+            :title="draft.imageErrors[0]"
+          />
         </div>
 
         <div v-show="step === 1" class="step-panel">
@@ -713,6 +742,64 @@ async function packageRecords() {
 .plan-name-field { display: flex; flex-direction: column; gap: 6px; }
 .plan-name-field label { font-size: 12px; color: var(--brand-muted); font-weight: 700; }
 
+.upload-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upload-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--brand-green-soft);
+}
+
+.upload-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.upload-tile span {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14px 6px 4px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.55));
+  color: #fff;
+  font-size: 10px;
+  text-align: center;
+}
+
+.upload-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+}
+
+.upload-add { display: block; }
+.add-tile {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1.5px dashed rgba(35, 169, 124, 0.32);
+  border-radius: 12px;
+  color: var(--brand-green);
+  font-size: 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.add-tile .el-icon { font-size: 24px; }
+
 .upload-ic { font-size: 34px; color: var(--brand-green); }
 .upload-empty { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .preview-wrap { display: flex; justify-content: center; }
@@ -830,6 +917,7 @@ async function packageRecords() {
 .furniture-copy em { font-style: normal; color: var(--brand-green-deep); font-weight: 800; font-size: 12px; }
 
 @media (max-width: 720px) {
+  .upload-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .record-people { grid-template-columns: 1fr; }
   .furniture-row { grid-template-columns: 1fr; }
 }
