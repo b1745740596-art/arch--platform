@@ -48,6 +48,10 @@ function recordName(record) {
   return record.room_type ? term(record.room_type) : t('plan.unnamed')
 }
 
+function money(value) {
+  return value == null ? t('common.dash') : '¥' + Number(value).toLocaleString()
+}
+
 function ensureDraftDefaults() {
   const preset = studio.defaultPreset()
   draft.room_type = draft.room_type || preset.room_type
@@ -322,31 +326,6 @@ async function packageRecords() {
 
 <template>
   <div class="plan-workspace">
-    <aside class="plan-sidebar">
-      <div class="sidebar-head">
-        <b>{{ t('plan.recordsTitle') }}</b>
-        <span>{{ records.length }}</span>
-      </div>
-      <div v-if="!records.length" class="records-empty">
-        <el-icon><Picture /></el-icon>
-        <span>{{ t('plan.noRecords') }}</span>
-      </div>
-      <div v-else class="records-list">
-        <button
-          v-for="record in records"
-          :key="record.id"
-          type="button"
-          class="record-item"
-          :class="{ active: record.id === selectedRecord?.id }"
-          @click="selectedRecordId = record.id"
-        >
-          <img v-if="resolveMediaUrl(record.result?.result_url)" :src="resolveMediaUrl(record.result?.result_url)" :alt="record.title" />
-          <div v-else class="record-ph"><el-icon><Picture /></el-icon></div>
-          <span class="record-name">{{ record.title }}</span>
-        </button>
-      </div>
-    </aside>
-
     <section class="plan-main">
       <div class="step-indicator">
         <button
@@ -469,42 +448,114 @@ async function packageRecords() {
         </el-button>
       </div>
 
-      <div v-if="selectedRecord" class="selected-record">
-        <img v-if="resolveMediaUrl(selectedRecord.result?.result_url)" :src="resolveMediaUrl(selectedRecord.result?.result_url)" alt="" />
-        <div class="selected-copy">
-          <b>{{ selectedRecord.title }}</b>
-          <span>{{ term(selectedRecord.room_type) }} · {{ term(selectedRecord.style) }}</span>
-          <el-button size="small" @click="records.splice(records.indexOf(selectedRecord), 1)">{{ t('common.remove') }}</el-button>
+      <section class="records-section">
+        <div class="records-head">
+          <div>
+            <b>{{ t('plan.recordsTitle') }}</b>
+            <span>{{ records.length }}</span>
+          </div>
+          <el-button
+            type="primary"
+            :disabled="!records.length"
+            :loading="submitting"
+            @click="packageRecords"
+          >
+            <el-icon><Box /></el-icon>
+            {{ t('plan.packageRecords') }}
+          </el-button>
         </div>
-      </div>
 
-      <el-button class="package-btn" :disabled="!records.length" :loading="submitting" @click="packageRecords">
-        <el-icon><Box /></el-icon>
-        {{ t('plan.packageRecords') }}
-      </el-button>
+        <div v-if="!records.length" class="records-empty">
+          <el-icon><Picture /></el-icon>
+          <span>{{ t('plan.noRecords') }}</span>
+        </div>
+
+        <div v-else class="records-row">
+          <button
+            v-for="record in records"
+            :key="record.id"
+            type="button"
+            class="record-item"
+            :class="{ active: record.id === selectedRecord?.id }"
+            @click="selectedRecordId = record.id"
+          >
+            <img
+              v-if="resolveMediaUrl(record.result?.result_url)"
+              :src="resolveMediaUrl(record.result?.result_url)"
+              :alt="record.title"
+            />
+            <div v-else class="record-ph"><el-icon><Picture /></el-icon></div>
+            <span class="record-name">{{ record.title }}</span>
+          </button>
+        </div>
+
+        <div v-if="selectedRecord" class="record-detail">
+          <img
+            v-if="resolveMediaUrl(selectedRecord.result?.result_url)"
+            :src="resolveMediaUrl(selectedRecord.result?.result_url)"
+            class="record-hero"
+            alt=""
+          />
+          <div class="record-meta">
+            <div class="record-meta-title">
+              <b>{{ selectedRecord.title }}</b>
+              <el-button size="small" text type="danger" @click="records.splice(records.indexOf(selectedRecord), 1)">
+                {{ t('common.remove') }}
+              </el-button>
+            </div>
+            <span>{{ term(selectedRecord.room_type) }} · {{ term(selectedRecord.style) }} · {{ term(selectedRecord.budget_tier) }}</span>
+            <p v-if="selectedRecord.result?.design_note">{{ selectedRecord.result.design_note }}</p>
+          </div>
+
+          <div class="record-people">
+            <div class="person-card">
+              <b>{{ t('render.designer') }}</b>
+              <template v-if="selectedRecord.result?.designer">
+                <span>{{ selectedRecord.result.designer.name }} · {{ selectedRecord.result.designer.title }}</span>
+                <small>{{ selectedRecord.result.designer.city }} · {{ selectedRecord.result.designer.years }} 年</small>
+              </template>
+              <span v-else>{{ t('common.none') }}</span>
+            </div>
+            <div class="person-card">
+              <b>{{ t('render.contractor') }}</b>
+              <template v-if="selectedRecord.result?.contractor">
+                <span>{{ selectedRecord.result.contractor.name }}</span>
+                <small>{{ selectedRecord.result.contractor.city }} · {{ selectedRecord.result.contractor.quote_range }}</small>
+              </template>
+              <span v-else>{{ t('common.none') }}</span>
+            </div>
+          </div>
+
+          <div v-if="selectedRecord.result?.furnitures?.length" class="record-furniture">
+            <b class="furniture-title">{{ t('render.furnitureList') }}</b>
+            <div class="furniture-row">
+              <div v-for="item in selectedRecord.result.furnitures" :key="item.id" class="furniture-card">
+                <img v-if="resolveMediaUrl(item.image_url)" :src="resolveMediaUrl(item.image_url)" alt="" />
+                <div class="furniture-copy">
+                  <b>{{ item.name }}</b>
+                  <span>{{ item.brand }} · {{ term(item.category_display) }}</span>
+                  <em>{{ money(item.price) }}</em>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </section>
   </div>
 </template>
 
 <style scoped>
 .plan-workspace {
-  display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  display: block;
 }
 
-.plan-sidebar {
-  position: sticky;
-  top: 80px;
+.plan-main {
   border: 1px solid var(--app-border);
-  border-radius: 16px;
+  border-radius: 18px;
   background: var(--app-surface);
-  padding: 12px;
+  padding: 16px;
 }
-
-.sidebar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
-.sidebar-head span { color: var(--brand-muted); }
 
 .records-empty {
   display: flex;
@@ -519,12 +570,38 @@ async function packageRecords() {
 
 .records-list { display: flex; flex-direction: column; gap: 8px; }
 
+.records-section {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--app-border);
+}
+
+.records-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.records-head > div { display: flex; align-items: center; gap: 7px; font-size: 14px; }
+.records-head > div span { color: var(--brand-muted); font-size: 12px; }
+
+.records-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
 .record-item {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  width: 100%;
+  width: 92px;
   padding: 7px;
   border: 1px solid transparent;
   border-radius: 12px;
@@ -546,13 +623,6 @@ async function packageRecords() {
 
 .record-ph { display: grid; place-items: center; color: var(--brand-muted); background: var(--brand-green-soft); }
 .record-name { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.plan-main {
-  border: 1px solid var(--app-border);
-  border-radius: 18px;
-  background: var(--app-surface);
-  padding: 16px;
-}
 
 .step-indicator { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
 
@@ -619,28 +689,78 @@ async function packageRecords() {
 .step-actions { display: flex; justify-content: space-between; margin-top: 16px; }
 .generate-btn { width: 100%; margin-top: 8px; }
 
-.selected-record {
+.record-detail {
   display: flex;
-  gap: 10px;
-  align-items: center;
+  flex-direction: column;
+  gap: 14px;
   margin-top: 16px;
-  padding: 10px;
+}
+
+.record-hero {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
   border-radius: 14px;
   background: var(--brand-green-soft);
 }
 
-.selected-record img { width: 72px; height: 54px; object-fit: cover; border-radius: 9px; }
-.selected-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.selected-copy b { font-size: 13px; }
-.selected-copy span { color: var(--brand-muted); font-size: 12px; }
+.record-meta-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.record-meta-title b { font-size: 16px; }
+.record-meta > span { color: var(--brand-muted); font-size: 13px; }
+.record-meta p { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
 
-.package-btn { width: 100%; margin-top: 16px; }
+.record-people {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.person-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--brand-green-soft);
+  font-size: 12px;
+}
+
+.person-card b { font-size: 13px; color: var(--brand-green-deep); }
+.person-card span { color: var(--brand-ink); }
+.person-card small { color: var(--brand-muted); }
+
+.record-furniture { margin-top: 4px; }
+.furniture-title { display: block; font-size: 13px; color: var(--brand-green-deep); margin-bottom: 8px; }
+
+.furniture-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.furniture-card {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: #f7fbf9;
+}
+
+.furniture-card img {
+  width: 52px;
+  height: 52px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex: none;
+}
+
+.furniture-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.furniture-copy b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.furniture-copy span { color: var(--brand-muted); font-size: 11px; }
+.furniture-copy em { font-style: normal; color: var(--brand-green-deep); font-weight: 800; font-size: 12px; }
 
 @media (max-width: 720px) {
-  .plan-workspace { grid-template-columns: 1fr; }
-  .plan-sidebar { position: static; display: flex; gap: 10px; overflow-x: auto; }
-  .records-list { flex-direction: row; }
-  .record-item { min-width: 88px; }
-  .records-empty { min-width: 120px; }
+  .record-people { grid-template-columns: 1fr; }
+  .furniture-row { grid-template-columns: 1fr; }
 }
 </style>

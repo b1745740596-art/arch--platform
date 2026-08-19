@@ -130,7 +130,7 @@ export default {
     description: '多窗口生成方案、预算建议、家具清单与设计师/施工队推荐，汇总为可下单的报告书。',
     newTask: '新建生成任务',
     tabStudio: '我的计划',
-    tabReport: '历史计划',
+    tabReport: '我的历史项目',
     tabOrders: '项目订单',
     tabRequirementInfo: '需求信息',
     reportList: '我的报告',

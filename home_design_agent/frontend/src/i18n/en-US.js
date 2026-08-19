@@ -132,7 +132,7 @@ export default {
     description: 'Generate parallel schemes, budget advice, furniture lists and designer/contractor matches — all compiled into an order-ready report.',
     newTask: 'New generation task',
     tabStudio: 'My Plans',
-    tabReport: 'History',
+    tabReport: 'My History',
     tabOrders: 'Orders',
     tabRequirementInfo: 'Requirements',
     reportList: 'My Reports',
