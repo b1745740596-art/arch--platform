@@ -148,22 +148,7 @@ watch(
                 </div>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="isApp" @click="settingsVisible = true">
-                      <span class="settings-menu-item">
-                        <el-icon><Setting /></el-icon>
-                        <span>{{ t('appUpdate.settings') }}</span>
-                        <span v-if="appUpdate.updateAvailable" class="update-dot"></span>
-                      </span>
-                    </el-dropdown-item>
-                    <template v-if="isApp">
-                      <el-dropdown-item @click="router.push('/my-home')">{{ t('nav.myHome') }}</el-dropdown-item>
-                      <el-dropdown-item @click="router.push('/requirement')">{{ t('nav.requirement') }}</el-dropdown-item>
-                      <el-dropdown-item @click="router.push('/intake')">{{ t('nav.intake') }}</el-dropdown-item>
-                      <el-dropdown-item divided @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
-                    </template>
-                    <template v-else>
-                      <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
-                    </template>
+                    <el-dropdown-item @click="router.push('/account')">{{ t('nav.account') }}</el-dropdown-item>
                     <el-dropdown-item @click="router.push('/billing')">{{ t('nav.billing') }}</el-dropdown-item>
                     <el-dropdown-item
                       v-if="auth.user.is_staff || auth.user.is_superuser"
@@ -197,6 +182,45 @@ watch(
           </transition>
         </RouterView>
       </main>
+
+      <nav v-if="isApp" class="app-tabbar" aria-label="App navigation">
+        <router-link
+          class="tabbar-item"
+          :class="{ active: route.path === '/my-home' }"
+          to="/my-home"
+        >
+          <el-icon><House /></el-icon>
+          <span>{{ t('nav.myHome') }}</span>
+        </router-link>
+        <router-link
+          class="tabbar-item"
+          :class="{ active: route.path === '/requirement' }"
+          to="/requirement"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+          <span>{{ t('nav.requirement') }}</span>
+        </router-link>
+        <router-link
+          class="tabbar-item"
+          :class="{ active: route.path === '/intake' }"
+          to="/intake"
+        >
+          <el-icon><UploadFilled /></el-icon>
+          <span>{{ t('nav.intake') }}</span>
+        </router-link>
+        <button
+          type="button"
+          class="tabbar-item"
+          :class="{ active: settingsVisible }"
+          @click="settingsVisible = true"
+        >
+          <span class="tabbar-icon-wrap">
+            <el-icon><Setting /></el-icon>
+            <span v-if="appUpdate.updateAvailable" class="update-dot"></span>
+          </span>
+          <span>{{ t('appUpdate.settings') }}</span>
+        </button>
+      </nav>
 
       <footer v-if="!isApp" class="app-footer">
         <div class="footer-inner">
@@ -463,7 +487,66 @@ watch(
 
 .app.is-app .app-main {
   max-width: none;
-  padding: 12px 12px 20px;
+  padding: 12px 12px 84px;
+}
+
+.app-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.94);
+  border-top: 1px solid rgba(47, 107, 79, 0.10);
+  box-shadow: 0 -8px 24px rgba(45, 62, 52, 0.10);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.tabbar-item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px 4px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--brand-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.tabbar-item :deep(.el-icon),
+.tabbar-item .el-icon {
+  font-size: 20px;
+}
+
+.tabbar-item:active { transform: scale(0.96); }
+.tabbar-item.active {
+  color: var(--brand-green-deep);
+  background: rgba(47, 107, 79, 0.08);
+}
+
+.tabbar-icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tabbar-icon-wrap .update-dot {
+  position: absolute;
+  top: -1px;
+  right: -5px;
 }
 
 .settings-menu-item {
