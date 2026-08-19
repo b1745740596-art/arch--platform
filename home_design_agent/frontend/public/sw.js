@@ -1,5 +1,5 @@
 const CACHE_NAME = 'arch-ai-v1'
-const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png']
+const APP_SHELL = ['/', '/static/manifest.webmanifest', '/static/icons/icon-192.png', '/static/icons/icon-512.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
