@@ -90,6 +90,7 @@ paymentsClient.interceptors.response.use(
 
 export const api = {
   health: () => client.get('/health/'),
+  appVersion: () => client.get('/app-version/'),
   // 项目
   listProjects: () => client.get('/projects/'),
   getProject: (id) => client.get(`/projects/${id}/`),

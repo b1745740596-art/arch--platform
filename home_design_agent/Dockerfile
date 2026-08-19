@@ -31,6 +31,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY manage.py ./
+COPY app_release.json ./
 COPY config/ ./config/
 COPY design/ ./design/
 COPY users/ ./users/

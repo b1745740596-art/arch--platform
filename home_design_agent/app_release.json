@@ -1,0 +1,11 @@
+{
+  "version": "1.1.0",
+  "build": 2,
+  "apk_url": "/media/app/arch-ai.apk",
+  "changelog": [
+    "App 首页直达核心设计功能",
+    "修复家具图片显示问题",
+    "新增应用自动更新模块"
+  ],
+  "force_update": false
+}

@@ -17,6 +17,23 @@ export default {
     adminPayments: 'Revenue',
     language: 'Language',
   },
+  appUpdate: {
+    settings: 'Settings',
+    accountHint: 'Profile, password and bindings',
+    updateTitle: 'App update',
+    currentVersion: 'Current version',
+    latestVersion: 'Latest version',
+    checkUpdate: 'Check for updates',
+    checking: 'Checking…',
+    upToDate: 'You are up to date',
+    updateAvailable: 'Version {version}',
+    autoAvailable: 'New version {version} is available. Update now?',
+    updateNow: 'Update now',
+    later: 'Later',
+    download: 'Download APK',
+    changelog: "What's new",
+    failed: 'Update check failed: {msg}',
+  },
   footer:
     'Arch_AI Platform · Research preview · Renders are for reference only; final results require on-site measurement and buildability review',
   common: {

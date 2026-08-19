@@ -1,4 +1,7 @@
+import json
+
 import django
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.db import transaction
 from rest_framework import viewsets
@@ -54,6 +57,29 @@ def health(request):
         'app': 'design',
         'django': django.get_version(),
     })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def app_release(request):
+    """App 端自动更新配置。
+
+    返回线上 APK 的最新版本、下载地址与更新说明。版本号由部署时维护
+    `app_release.json`，避免把发布配置散落在环境变量里。
+    """
+    path = settings.BASE_DIR / 'app_release.json'
+    defaults = {
+        'version': '0.0.0',
+        'build': 0,
+        'apk_url': '/media/app/arch-ai.apk',
+        'changelog': [],
+        'force_update': False,
+    }
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (FileNotFoundError, json.JSONDecodeError):
+        payload = {}
+    return Response({**defaults, **payload})
 
 
 def _user_payload(user):

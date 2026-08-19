@@ -1,15 +1,21 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessageBox } from 'element-plus'
 import { SUPPORTED_LOCALES, currentLocale, elementLocale, setLocale } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { useAppUpdateStore } from '@/stores/appUpdate'
 import { appDefaultRoute, isNativeApp } from '@/utils/app'
+import AppSettingsDialog from '@/components/AppSettingsDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const auth = useAuthStore()
+const appUpdate = useAppUpdateStore()
+const settingsVisible = ref(false)
+let autoUpdatePromptShown = false
 
 const isApp = computed(() => isNativeApp())
 const defaultPath = computed(() => appDefaultRoute())
@@ -54,7 +60,30 @@ async function doLogout() {
 
 onMounted(() => {
   auth.fetchMe()
+  if (isApp.value) appUpdate.check()
 })
+
+watch(
+  () => appUpdate.updateAvailable,
+  async (available) => {
+    if (!isApp.value || !available || autoUpdatePromptShown) return
+    autoUpdatePromptShown = true
+    try {
+      await ElMessageBox.confirm(
+        t('appUpdate.autoAvailable', { version: appUpdate.latest?.version || '' }),
+        t('appUpdate.updateTitle'),
+        {
+          confirmButtonText: t('appUpdate.updateNow'),
+          cancelButtonText: t('appUpdate.later'),
+          type: 'info',
+        },
+      )
+      appUpdate.downloadLatest()
+    } catch {
+      // 用户选择稍后，可随时从头像下的“设置”进入再检查。
+    }
+  },
+)
 </script>
 
 <template>
@@ -119,6 +148,13 @@ onMounted(() => {
                 </div>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item v-if="isApp" @click="settingsVisible = true">
+                      <span class="settings-menu-item">
+                        <el-icon><Setting /></el-icon>
+                        <span>{{ t('appUpdate.settings') }}</span>
+                        <span v-if="appUpdate.updateAvailable" class="update-dot"></span>
+                      </span>
+                    </el-dropdown-item>
                     <template v-if="isApp">
                       <el-dropdown-item @click="router.push('/my-home')">{{ t('nav.myHome') }}</el-dropdown-item>
                       <el-dropdown-item @click="router.push('/requirement')">{{ t('nav.requirement') }}</el-dropdown-item>
@@ -168,6 +204,8 @@ onMounted(() => {
           <span>{{ t('footer') }}</span>
         </div>
       </footer>
+
+      <AppSettingsDialog v-model="settingsVisible" />
     </div>
   </el-config-provider>
 </template>
@@ -426,6 +464,21 @@ onMounted(() => {
 .app.is-app .app-main {
   max-width: none;
   padding: 12px 12px 20px;
+}
+
+.settings-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.update-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  box-shadow: 0 0 0 3px rgba(245, 108, 108, 0.16);
 }
 
 @media (max-width: 860px) {
