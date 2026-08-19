@@ -58,9 +58,21 @@ async function doLogout() {
   router.push(logoutPath.value)
 }
 
+async function configureAppChrome() {
+  if (!isApp.value) return
+  try {
+    const { StatusBar, Style } = await import('@capacitor/status-bar')
+    await StatusBar.setBackgroundColor({ color: '#f6f1e8' })
+    await StatusBar.setStyle({ style: Style.Dark })
+  } catch {
+    // 状态栏插件不可用时降级，不影响页面渲染。
+  }
+}
+
 onMounted(() => {
   auth.fetchMe()
   if (isApp.value) appUpdate.check()
+  configureAppChrome()
 })
 
 watch(
@@ -459,6 +471,10 @@ watch(
 
 /* App 端（Capacitor / 原生壳）：更像移动端首页，去掉营销型布局的余量，
    让核心功能尽量顶到首屏。 */
+.app.is-app {
+  background: var(--brand-ivory);
+}
+
 .app.is-app .topbar.is-app {
   background: var(--brand-ivory);
   border-bottom: none;

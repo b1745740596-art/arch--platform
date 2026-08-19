@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@capacitor/app": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.3",
     "@element-plus/icons-vue": "^2.3.2",
     "axios": "^1.19.0",
     "echarts": "^6.1.0",
