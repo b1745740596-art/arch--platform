@@ -1,7 +1,7 @@
 {
   "appId": "com.archai.home",
   "appName": "Arch AI",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "backgroundColor": "#ffffff",
   "webDir": "../frontend_dist",
   "server": {
