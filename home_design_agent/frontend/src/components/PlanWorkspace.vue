@@ -23,10 +23,12 @@ const step = ref(0)
 const submitting = ref(false)
 const records = ref([])
 const projectId = ref(studio.sessionProjectId || null)
+const projectName = ref('')
 const selectedRecordId = ref(null)
 const uploadRef = ref(null)
 
 const draft = reactive({
+  plan_name: '',
   file: null,
   previewUrl: '',
   imageMeta: null,
@@ -110,6 +112,7 @@ function money(value) {
 
 function ensureDraftDefaults() {
   const preset = studio.defaultPreset()
+  draft.plan_name = draft.plan_name || projectName.value
   draft.room_type = draft.room_type || preset.room_type
   draft.style = draft.style || preset.style
   draft.budget_tier = draft.budget_tier || preset.budget_tier
@@ -150,7 +153,7 @@ function resetDraft() {
 }
 
 function uploadValid() {
-  return Boolean(draft.file && !draft.imageErrors.length)
+  return Boolean(draft.plan_name.trim() && draft.file && !draft.imageErrors.length)
 }
 
 function configValid() {
@@ -213,48 +216,12 @@ function removeImage() {
   uploadRef.value?.clearFiles()
 }
 
-function toggleModule(module) {
-  const selected = draft.moduleCodes
-  const index = selected.indexOf(module.code)
-  if (index >= 0) {
-    selected.splice(index, 1)
-    return
-  }
-  const check = canSelectModule({
-    module,
-    selectedCodes: selected,
-    modules: studio.modules,
-    groups: studio.groups,
-    maxModules: studio.maxModules,
-  })
-  if (!check.allowed) {
-    ElMessage.warning(check.reason)
-    return
-  }
-  if (check.replace?.length) {
-    for (const code of check.replace) {
-      const idx = selected.indexOf(code)
-      if (idx >= 0) selected.splice(idx, 1)
-    }
-  }
-  selected.push(module.code)
-}
-
-function isModuleSelected(code) {
-  return draft.moduleCodes.includes(code)
-}
-
-function groupHint(group) {
-  if (group.multiple === false) return t('win.single')
-  return group.max_select ? t('win.maxSelect', { max: group.max_select }) : t('win.multiple')
-}
-
 async function ensureProject() {
   if (projectId.value) return projectId.value
-  const project = await api.createProject({
-    title: t('render.projectTitle', { room: draft.room_type, style: draft.style }),
-  })
+  const title = draft.plan_name.trim() || t('render.projectTitle', { room: draft.room_type, style: draft.style })
+  const project = await api.createProject({ title })
   projectId.value = project.id
+  projectName.value = title
   studio.sessionProjectId = project.id
   return project.id
 }
@@ -405,6 +372,15 @@ async function packageRecords() {
 
       <div class="step-content">
         <div v-show="step === 0" class="step-panel">
+          <div class="plan-name-field">
+            <label>{{ t('plan.nameLabel') }}</label>
+            <el-input
+              v-model="draft.plan_name"
+              :maxlength="40"
+              show-word-limit
+              :placeholder="t('plan.namePlaceholder')"
+            />
+          </div>
           <el-upload
             ref="uploadRef"
             drag
@@ -493,7 +469,7 @@ async function packageRecords() {
               </el-tag>
             </div>
 
-            <el-button v-if="!packLocked" type="primary" plain @click="rollPack">
+            <el-button v-if="!packLocked" type="primary" @click="rollPack">
               <el-icon><Refresh /></el-icon>
               {{ t('plan.rollPack') }}
             </el-button>
@@ -733,6 +709,9 @@ async function packageRecords() {
 
 .step-content { min-height: 320px; }
 .step-panel { display: flex; flex-direction: column; gap: 12px; }
+
+.plan-name-field { display: flex; flex-direction: column; gap: 6px; }
+.plan-name-field label { font-size: 12px; color: var(--brand-muted); font-weight: 700; }
 
 .upload-ic { font-size: 34px; color: var(--brand-green); }
 .upload-empty { display: flex; flex-direction: column; align-items: center; gap: 3px; }

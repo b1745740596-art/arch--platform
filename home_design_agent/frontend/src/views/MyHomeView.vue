@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import StudioView from './StudioView.vue'
 import RequirementView from './RequirementView.vue'
 import IntakeView from './IntakeView.vue'
@@ -304,6 +304,29 @@ function selectReport(report) {
   selectedReportId.value = report.id
 }
 
+async function renameReport(report) {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('myHome.renameHint'),
+      t('myHome.renameTitle'),
+      {
+        confirmButtonText: t('common.save'),
+        cancelButtonText: t('common.cancel'),
+        inputValue: report.title || '',
+        inputPlaceholder: t('myHome.renamePlaceholder'),
+        inputValidator: (text) => Boolean(text && text.trim()),
+      },
+    )
+    await api.updateReport(report.id, { title: value.trim() })
+    ElMessage.success(t('myHome.renameSuccess'))
+    await loadReports()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(t('myHome.renameFailed', { msg: extractError(error) }))
+    }
+  }
+}
+
 function openWorkbench() {
   if (studio.canAddWindow) studio.addWindow()
   tab.value = 'studio'
@@ -391,15 +414,26 @@ watch(
             <el-icon><Document /></el-icon>
             <span>{{ t('myHome.noReports') }}</span>
           </div>
-          <button
+          <div
             v-for="report in reports"
             :key="report.id"
-            type="button"
+            role="button"
+            tabindex="0"
             class="report-item"
             :class="{ active: report.id === selectedReport?.id }"
             @click="selectReport(report)"
           >
-            <div class="report-item-title">{{ report.title || t('common.none') }}</div>
+            <div class="report-item-title">
+              <span>{{ report.title || t('common.none') }}</span>
+              <el-button
+                size="small"
+                text
+                :title="t('myHome.renameTitle')"
+                @click.stop="renameReport(report)"
+              >
+                <el-icon><EditPen /></el-icon>
+              </el-button>
+            </div>
             <div class="report-item-meta">
               <span>{{ term(report.room_type) }} · {{ term(report.style) }}</span>
               <span v-if="report.report?.window_count" class="report-count">
@@ -409,7 +443,7 @@ watch(
                 {{ report.status_display }}
               </el-tag>
             </div>
-          </button>
+          </div>
         </aside>
 
         <article v-if="selectedReport" class="report-detail">
@@ -435,15 +469,73 @@ watch(
 
           <section v-if="reportData.windows?.length" class="report-section">
             <h3><el-icon><Grid /></el-icon> {{ t('myHome.windowSchemes') }}</h3>
-            <div class="window-grid">
-              <div v-for="(w, index) in reportData.windows" :key="`${w.title}-${index}`" class="window-card">
-                <img v-if="resolveMediaUrl(w.result_url)" :src="resolveMediaUrl(w.result_url)" :alt="w.title" />
-                <div v-else class="window-ph"><el-icon><Picture /></el-icon></div>
-                <div class="window-info">
-                  <b>{{ w.title }}</b>
-                  <span>{{ term(w.room_type) }} · {{ term(w.style) }} · {{ term(w.budget_tier) }}</span>
-                </div>
-              </div>
+            <div class="window-list">
+              <el-collapse
+                v-for="(w, index) in reportData.windows"
+                :key="`${w.title}-${index}`"
+                class="window-collapse"
+              >
+                <el-collapse-item :name="index">
+                  <template #title>
+                    <div class="window-collapse-title">
+                      <img
+                        v-if="resolveMediaUrl(w.result_url)"
+                        :src="resolveMediaUrl(w.result_url)"
+                        :alt="w.title"
+                      />
+                      <div v-else class="window-ph"><el-icon><Picture /></el-icon></div>
+                      <div class="window-title-copy">
+                        <b>{{ w.title }}</b>
+                        <span>{{ term(w.room_type) }} · {{ term(w.style) }} · {{ term(w.budget_tier) }}</span>
+                      </div>
+                    </div>
+                  </template>
+
+                  <div class="window-detail">
+                    <img
+                      v-if="resolveMediaUrl(w.result_url)"
+                      :src="resolveMediaUrl(w.result_url)"
+                      class="window-detail-hero"
+                      alt=""
+                    />
+                    <p v-if="w.design_note" class="window-detail-note">{{ w.design_note }}</p>
+
+                    <div class="window-detail-people">
+                      <div class="window-person">
+                        <b>{{ t('myHome.designer') }}</b>
+                        <template v-if="w.designer">
+                          <span>{{ w.designer.name }} · {{ w.designer.title }}</span>
+                          <small>{{ w.designer.city }} · {{ w.designer.years }} 年</small>
+                          <em>{{ w.designer.intro }}</em>
+                        </template>
+                        <span v-else>{{ t('common.none') }}</span>
+                      </div>
+                      <div class="window-person">
+                        <b>{{ t('myHome.contractor') }}</b>
+                        <template v-if="w.contractor">
+                          <span>{{ w.contractor.name }}</span>
+                          <small>{{ w.contractor.city }} · {{ w.contractor.quote_range }} · {{ w.contractor.response_speed }}</small>
+                        </template>
+                        <span v-else>{{ t('common.none') }}</span>
+                      </div>
+                    </div>
+
+                    <div v-if="w.furnitures?.length" class="window-detail-furniture">
+                      <b class="window-furniture-title">{{ t('myHome.furnitureList') }}</b>
+                      <div class="window-furniture-row">
+                        <div v-for="f in w.furnitures" :key="f.id" class="window-furniture-card">
+                          <img v-if="resolveMediaUrl(f.image_url)" :src="resolveMediaUrl(f.image_url)" alt="" />
+                          <div>
+                            <b>{{ f.name }}</b>
+                            <span>{{ f.brand }} · {{ term(f.category_display) }}</span>
+                            <em>{{ money(f.price) }}</em>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
             </div>
           </section>
 
@@ -768,8 +860,16 @@ watch(
 .report-item.active { border-color: rgba(35, 169, 124, 0.28); background: rgba(35, 169, 124, 0.09); }
 
 .report-item-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 14px;
   font-weight: 700;
+}
+
+.report-item-title > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -899,6 +999,71 @@ watch(
   color: var(--brand-muted);
   font-size: 11px;
 }
+
+.window-list { display: flex; flex-direction: column; gap: 8px; }
+.window-collapse { border: 1px solid var(--app-border); border-radius: 14px; overflow: hidden; }
+
+.window-collapse-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.window-collapse-title img,
+.window-collapse-title .window-ph {
+  width: 60px;
+  height: 46px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex: none;
+}
+
+.window-title-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.window-title-copy b { font-size: 13px; }
+.window-title-copy span { color: var(--brand-muted); font-size: 11px; }
+
+.window-detail { display: flex; flex-direction: column; gap: 12px; padding: 4px 4px 10px; }
+.window-detail-hero { width: 100%; max-height: 320px; object-fit: contain; border-radius: 12px; background: var(--brand-green-soft); }
+.window-detail-note { margin: 0; color: var(--brand-ink); font-size: 12px; line-height: 1.7; }
+
+.window-detail-people {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.window-person {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--brand-green-soft);
+}
+
+.window-person b { font-size: 12px; color: var(--brand-green-deep); }
+.window-person span { color: var(--brand-ink); font-size: 12px; }
+.window-person small { color: var(--brand-muted); font-size: 11px; }
+.window-person em { font-style: normal; color: var(--brand-muted); font-size: 11px; }
+
+.window-detail-furniture { margin-top: 2px; }
+.window-furniture-title { display: block; font-size: 12px; color: var(--brand-green-deep); margin-bottom: 6px; }
+.window-furniture-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+.window-furniture-card {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 11px;
+  background: #f7fbf9;
+}
+
+.window-furniture-card img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
+.window-furniture-card div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.window-furniture-card b { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.window-furniture-card span { color: var(--brand-muted); font-size: 10px; }
+.window-furniture-card em { font-style: normal; color: var(--brand-green-deep); font-size: 11px; font-weight: 800; }
 
 .report-section {
   padding: 16px 0;
@@ -1037,5 +1202,7 @@ watch(
   .people-grid { grid-template-columns: 1fr; }
   .furniture-grid { grid-template-columns: 1fr; }
   .window-grid { grid-template-columns: 1fr; }
+  .window-detail-people { grid-template-columns: 1fr; }
+  .window-furniture-row { grid-template-columns: 1fr; }
 }
 </style>

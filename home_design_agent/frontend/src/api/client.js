@@ -130,6 +130,7 @@ export const api = {
   listRequirements: (params) => client.get('/requirements/', { params }),
   // 「我的家」报告书与项目订单
   saveReport: (data) => client.post('/reports/', data),
+  updateReport: (id, data) => client.patch(`/reports/${id}/`, data),
   listReports: () => client.get('/reports/'),
   getReport: (id) => client.get(`/reports/${id}/`),
   createOrder: (data) => client.post('/orders/', data),
