@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api/client'
@@ -8,6 +9,7 @@ import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
 import { validateImageFile } from '@/utils/validation'
 
+const router = useRouter()
 const studio = useStudioStore()
 const { t } = useI18n()
 const term = useTerm()
@@ -344,6 +346,7 @@ async function packageRecords() {
       payload,
     })
     ElMessage.success(t('plan.packageSuccess'))
+    router.push({ path: '/my-home', query: { tab: 'report' } })
   } catch (error) {
     const data = error?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : error.message)
@@ -357,20 +360,6 @@ async function packageRecords() {
 <template>
   <div class="plan-workspace">
     <section class="plan-main">
-      <div class="step-indicator">
-        <button
-          v-for="(item, index) in steps"
-          :key="item.key"
-          type="button"
-          class="step-dot"
-          :class="{ active: index <= step }"
-          @click="goToStep(index)"
-        >
-          <span>{{ index + 1 }}</span>
-          <small>{{ t(item.labelKey) }}</small>
-        </button>
-      </div>
-
       <div class="step-content">
         <div v-show="step === 0" class="step-panel">
           <div class="plan-name-field">
@@ -593,6 +582,14 @@ async function packageRecords() {
               <template v-if="selectedRecord.result?.designer">
                 <span>{{ selectedRecord.result.designer.name }} · {{ selectedRecord.result.designer.title }}</span>
                 <small>{{ selectedRecord.result.designer.city }} · {{ selectedRecord.result.designer.years }} 年</small>
+                <el-link
+                  :href="`https://example.com/designer/${selectedRecord.result.designer.id}`"
+                  target="_blank"
+                  type="primary"
+                  :underline="false"
+                >
+                  {{ t('plan.viewDesigner') }}
+                </el-link>
               </template>
               <span v-else>{{ t('common.none') }}</span>
             </div>
@@ -601,6 +598,14 @@ async function packageRecords() {
               <template v-if="selectedRecord.result?.contractor">
                 <span>{{ selectedRecord.result.contractor.name }}</span>
                 <small>{{ selectedRecord.result.contractor.city }} · {{ selectedRecord.result.contractor.quote_range }}</small>
+                <el-link
+                  :href="`https://example.com/contractor/${selectedRecord.result.contractor.id}`"
+                  target="_blank"
+                  type="primary"
+                  :underline="false"
+                >
+                  {{ t('plan.viewContractor') }}
+                </el-link>
               </template>
               <span v-else>{{ t('common.none') }}</span>
             </div>
@@ -615,6 +620,14 @@ async function packageRecords() {
                   <b>{{ item.name }}</b>
                   <span>{{ item.brand }} · {{ term(item.category_display) }}</span>
                   <em>{{ money(item.price) }}</em>
+                  <el-link
+                    :href="item.buy_url || `https://example.com/furniture/${item.id}`"
+                    target="_blank"
+                    type="primary"
+                    :underline="false"
+                  >
+                    {{ t('render.buyLink') }}
+                  </el-link>
                 </div>
               </div>
             </div>

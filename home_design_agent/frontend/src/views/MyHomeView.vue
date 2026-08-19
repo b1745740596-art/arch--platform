@@ -507,6 +507,9 @@ watch(
                           <span>{{ w.designer.name }} · {{ w.designer.title }}</span>
                           <small>{{ w.designer.city }} · {{ w.designer.years }} 年</small>
                           <em>{{ w.designer.intro }}</em>
+                          <el-link :href="`https://example.com/designer/${w.designer.id}`" target="_blank" type="primary" :underline="false">
+                            {{ t('plan.viewDesigner') }}
+                          </el-link>
                         </template>
                         <span v-else>{{ t('common.none') }}</span>
                       </div>
@@ -515,6 +518,9 @@ watch(
                         <template v-if="w.contractor">
                           <span>{{ w.contractor.name }}</span>
                           <small>{{ w.contractor.city }} · {{ w.contractor.quote_range }} · {{ w.contractor.response_speed }}</small>
+                          <el-link :href="`https://example.com/contractor/${w.contractor.id}`" target="_blank" type="primary" :underline="false">
+                            {{ t('plan.viewContractor') }}
+                          </el-link>
                         </template>
                         <span v-else>{{ t('common.none') }}</span>
                       </div>
@@ -529,6 +535,9 @@ watch(
                             <b>{{ f.name }}</b>
                             <span>{{ f.brand }} · {{ term(f.category_display) }}</span>
                             <em>{{ money(f.price) }}</em>
+                            <el-link :href="f.buy_url || `https://example.com/furniture/${f.id}`" target="_blank" type="primary" :underline="false">
+                              {{ t('render.buyLink') }}
+                            </el-link>
                           </div>
                         </div>
                       </div>
@@ -569,6 +578,9 @@ watch(
                   <b>{{ f.name }}</b>
                   <span>{{ f.brand }} · {{ term(f.category_display) }}</span>
                   <em>{{ money(f.price) }}</em>
+                  <el-link :href="f.buy_url || `https://example.com/furniture/${f.id}`" target="_blank" type="primary" :underline="false">
+                    {{ t('render.buyLink') }}
+                  </el-link>
                 </div>
               </div>
             </div>
@@ -585,6 +597,9 @@ watch(
                   <span>{{ reportData.designer.city }}</span>
                   <span>{{ reportData.designer.years }} 年</span>
                 </div>
+                <el-link :href="`https://example.com/designer/${reportData.designer.id}`" target="_blank" type="primary" :underline="false">
+                  {{ t('plan.viewDesigner') }}
+                </el-link>
               </template>
               <p v-else class="report-text muted">{{ t('common.none') }}</p>
             </section>
@@ -597,6 +612,9 @@ watch(
                   <span>{{ reportData.contractor.city }}</span>
                   <span>{{ reportData.contractor.response_speed }}</span>
                 </div>
+                <el-link :href="`https://example.com/contractor/${reportData.contractor.id}`" target="_blank" type="primary" :underline="false">
+                  {{ t('plan.viewContractor') }}
+                </el-link>
               </template>
               <p v-else class="report-text muted">{{ t('common.none') }}</p>
             </section>
