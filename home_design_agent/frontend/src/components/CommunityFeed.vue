@@ -1,7 +1,9 @@
 <script setup>
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const activeNames = ref(['feed'])
 
 const posts = [
   {
@@ -45,7 +47,7 @@ function toneClass(tone) {
 
 <template>
   <section class="community-feed">
-    <el-collapse>
+    <el-collapse v-model="activeNames">
       <el-collapse-item :title="t('community.title')" name="feed">
         <div class="post-grid">
           <article v-for="post in posts" :key="post.title" class="post-card">
@@ -66,7 +68,7 @@ function toneClass(tone) {
 </template>
 
 <style scoped>
-.community-feed { margin-top: 14px; }
+.community-feed { margin: 0 0 14px; }
 .community-feed :deep(.el-collapse) {
   border: 1px solid var(--app-border);
   border-radius: 16px;
@@ -80,7 +82,11 @@ function toneClass(tone) {
   color: var(--brand-green-deep);
   background: #fff;
 }
-.community-feed :deep(.el-collapse-item__content) { padding: 0 12px 12px; }
+.community-feed :deep(.el-collapse-item__content) {
+  padding: 0 12px 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
 
 .post-grid {
   display: grid;

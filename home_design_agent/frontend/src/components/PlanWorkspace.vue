@@ -362,6 +362,7 @@ async function packageRecords() {
 
 <template>
   <div class="plan-workspace">
+    <CommunityFeed />
     <section class="plan-main">
       <div class="step-content">
         <div v-show="step === 0" class="step-panel">
@@ -641,8 +642,6 @@ async function packageRecords() {
         </div>
       </section>
     </section>
-
-    <CommunityFeed />
   </div>
 </template>
 
