@@ -1,0 +1,9 @@
+{
+  "appId": "com.archai.home",
+  "appName": "Arch AI",
+  "webDir": "../frontend_dist",
+  "server": {
+    "url": "https://plankeai-home.com",
+    "cleartext": false
+  }
+}

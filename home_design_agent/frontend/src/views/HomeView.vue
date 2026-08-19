@@ -102,6 +102,16 @@ const showcase = [
             <el-icon><Download /></el-icon>
             {{ t('home.installButton') }}
           </el-button>
+          <el-button
+            tag="a"
+            href="https://github.com/b1745740596-art/arch--platform/releases/download/apk/app-debug.apk"
+            target="_blank"
+            class="download-cta"
+            size="large"
+          >
+            <el-icon><Cellphone /></el-icon>
+            {{ t('home.downloadApp') }}
+          </el-button>
         </div>
         <div class="hero-chips">
           <span class="chip"><el-icon><Picture /></el-icon> {{ t('home.chipRender') }}</span>
@@ -276,6 +286,12 @@ const showcase = [
 .install-cta {
   background: rgba(47, 107, 79, 0.10);
   border: 1px dashed rgba(47, 107, 79, 0.40);
+  color: var(--brand-green-deep);
+}
+
+.download-cta {
+  background: rgba(47, 107, 79, 0.14);
+  border: 1px solid rgba(47, 107, 79, 0.24);
   color: var(--brand-green-deep);
 }
 
