@@ -436,17 +436,17 @@ watch(
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ t(item.labelKey) }}</span>
         </button>
+        <button
+          v-if="isApp"
+          type="button"
+          class="seg-item recharge-item"
+          @click="goRecharge"
+        >
+          <el-icon><Wallet /></el-icon>
+          <span>{{ t('nav.billing') }}</span>
+          <em v-if="totalCredits !== null">{{ totalCredits }}</em>
+        </button>
       </div>
-      <button
-        v-if="isApp"
-        type="button"
-        class="home-bar-recharge"
-        @click="goRecharge"
-      >
-        <el-icon><Wallet /></el-icon>
-        <span>{{ t('nav.billing') }}</span>
-        <em v-if="totalCredits !== null">{{ totalCredits }}</em>
-      </button>
     </div>
 
     <div v-show="tab === 'studio'" class="tab-panel">
@@ -866,30 +866,16 @@ watch(
   width: 100%;
 }
 
-.home-bar-recharge {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid rgba(35, 169, 124, 0.18);
-  border-radius: 999px;
-  background: linear-gradient(135deg, #35bd8d, #23a97c);
-  color: #fff;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-  cursor: pointer;
-  box-shadow: 0 7px 16px rgba(35, 169, 124, 0.20);
+.seg-item.recharge-item {
+  color: var(--brand-green-deep);
 }
 
-.home-bar-recharge em {
+.seg-item.recharge-item em {
   min-width: 18px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
+  background: rgba(35, 169, 124, 0.12);
+  color: var(--brand-green-deep);
   font-style: normal;
   font-size: 12px;
 }
