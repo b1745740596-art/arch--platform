@@ -132,7 +132,6 @@ class StripeProvider(BaseProvider):
         cancel_url = request.build_absolute_uri('/billing?paid=cancel')
         session = stripe.checkout.Session.create(
             mode='payment',
-            payment_method_types=['card'],
             line_items=[{
                 'price_data': {
                     'currency': currency,
