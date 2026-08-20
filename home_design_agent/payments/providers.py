@@ -128,6 +128,7 @@ class StripeProvider(BaseProvider):
     def create_payment(self, order, request):
         stripe = self._client()
         currency, amount = self._target_amount(order)
+        tax_code = _setting('PAYMENT_STRIPE_TAX_CODE', 'txcd_10000000')
         success_url = request.build_absolute_uri('/billing?paid=success')
         cancel_url = request.build_absolute_uri('/billing?paid=cancel')
         session = stripe.checkout.Session.create(
@@ -138,6 +139,7 @@ class StripeProvider(BaseProvider):
                     'unit_amount': amount,
                     'product_data': {
                         'name': f'{order.plan.name} · {order.credits} 次生成额度',
+                        'tax_code': tax_code,
                     },
                 },
                 'quantity': 1,
