@@ -59,22 +59,22 @@ const summaries = [
 ]
 
 const types = ['furniture', 'designer', 'contractor']
-const tones = ['green', 'teal', 'mint', 'sky']
+
+const covers = Array.from(
+  { length: titles.length },
+  (_, index) => `/media/renders/render_${index + 1}.png`,
+)
 
 const posts = titles.map((title, index) => ({
   type: types[index % types.length],
   title,
   author: authors[index % authors.length],
   summary: summaries[index % summaries.length],
-  tone: tones[index % tones.length],
+  cover: covers[index],
 }))
 
 function typeLabel(type) {
   return t(`community.${type}`)
-}
-
-function toneClass(tone) {
-  return `tone-${tone}`
 }
 </script>
 
@@ -86,9 +86,9 @@ function toneClass(tone) {
     </header>
     <div class="post-grid">
       <article v-for="post in posts" :key="post.title" class="post-card">
-        <div class="post-cover" :class="toneClass(post.tone)">
-          <el-icon><Picture /></el-icon>
-          <span>{{ typeLabel(post.type) }}</span>
+        <div class="post-cover">
+          <img :src="post.cover" :alt="post.title" loading="lazy" />
+          <span class="post-type">{{ typeLabel(post.type) }}</span>
         </div>
         <div class="post-copy">
           <b>{{ post.title }}</b>
@@ -129,21 +129,31 @@ function toneClass(tone) {
 }
 
 .post-cover {
+  position: relative;
   aspect-ratio: 4 / 3;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
+  overflow: hidden;
+  background: #eef5f1;
 }
-.post-cover .el-icon { font-size: 20px; }
-.tone-green { background: linear-gradient(135deg, #35bd8d, #23a97c); }
-.tone-teal { background: linear-gradient(135deg, #4cc6b0, #2aa28d); }
-.tone-mint { background: linear-gradient(135deg, #7fd6b2, #4cb58f); }
-.tone-sky { background: linear-gradient(135deg, #77b9e8, #4a9ac9); }
+.post-cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.post-type {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(20, 45, 35, 0.62);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.2;
+}
 
 .post-copy { padding: 7px 8px 8px; }
 .post-copy b { display: block; font-size: 11px; line-height: 1.35; }
