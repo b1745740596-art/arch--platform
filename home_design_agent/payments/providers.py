@@ -112,6 +112,7 @@ class StripeProvider(BaseProvider):
         except ImportError as exc:  # pragma: no cover - 上线环境安装 stripe 后才会用到
             raise RuntimeError('缺少 stripe 依赖，请安装 requirements.txt 中的 stripe。') from exc
         stripe.api_key = _setting('PAYMENT_STRIPE_SECRET_KEY', '')
+        stripe.api_version = _setting('PAYMENT_STRIPE_API_VERSION', '2025-03-31.basil')
         if not stripe.api_key:
             raise RuntimeError('未配置 PAYMENT_STRIPE_SECRET_KEY。')
         return stripe
