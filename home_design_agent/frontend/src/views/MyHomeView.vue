@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import StudioView from './StudioView.vue'
@@ -8,6 +8,7 @@ import RequirementView from './RequirementView.vue'
 import IntakeView from './IntakeView.vue'
 import CommunityFeed from '@/components/CommunityFeed.vue'
 import { useStudioStore } from '@/stores/studio'
+import { useAccountStore } from '@/stores/account'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
@@ -16,7 +17,9 @@ import { isNativeApp } from '@/utils/app'
 const { t } = useI18n()
 const term = useTerm()
 const route = useRoute()
+const router = useRouter()
 const studio = useStudioStore()
+const account = useAccountStore()
 
 const tab = ref('studio')
 const studioExpanded = ref(false)
@@ -29,6 +32,8 @@ const combining = ref(false)
 const selectedReportId = ref(null)
 
 const isApp = computed(() => isNativeApp())
+const showAppHomeBar = computed(() => isApp.value && route.query.tab !== 'orders')
+const totalCredits = computed(() => account.profile?.total_credits ?? null)
 
 const TABS = [
   { key: 'studio', icon: 'Grid', labelKey: 'myHome.tabStudio' },
@@ -355,6 +360,10 @@ function openWorkbench() {
   tab.value = 'studio'
 }
 
+function goRecharge() {
+  router.push('/billing')
+}
+
 function applyRouteTab() {
   const value = route.query.tab
   if (value === 'orders' || value === 'report' || value === 'requirement-info') {
@@ -369,6 +378,7 @@ onMounted(() => {
   studio.startSession()
   loadReports()
   loadOrders()
+  if (isApp.value) account.fetchProfile().catch(() => {})
 })
 
 watch(
@@ -413,17 +423,29 @@ watch(
       </div>
     </section>
 
-    <div class="segmented" :class="{ 'is-app': isApp }">
+    <div v-show="!isApp || showAppHomeBar" class="home-bar" :class="{ 'is-app': isApp }">
+      <div class="segmented" :class="{ 'is-app': isApp }">
+        <button
+          v-for="item in TABS"
+          :key="item.key"
+          type="button"
+          class="seg-item"
+          :class="{ active: tab === item.key }"
+          @click="tab = item.key"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ t(item.labelKey) }}</span>
+        </button>
+      </div>
       <button
-        v-for="item in TABS"
-        :key="item.key"
+        v-if="isApp"
         type="button"
-        class="seg-item"
-        :class="{ active: tab === item.key }"
-        @click="tab = item.key"
+        class="home-bar-recharge"
+        @click="goRecharge"
       >
-        <el-icon><component :is="item.icon" /></el-icon>
-        <span>{{ t(item.labelKey) }}</span>
+        <el-icon><Wallet /></el-icon>
+        <span>{{ t('nav.billing') }}</span>
+        <em v-if="totalCredits !== null">{{ totalCredits }}</em>
       </button>
     </div>
 
@@ -787,6 +809,12 @@ watch(
   justify-content: flex-end;
 }
 
+.home-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .segmented {
   display: inline-flex;
   align-self: center;
@@ -827,10 +855,48 @@ watch(
   gap: 0;
 }
 
-.my-home.is-app .segmented.is-app {
+.home-bar.is-app {
   position: sticky;
   top: 12px;
   z-index: 20;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.home-bar-recharge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(35, 169, 124, 0.18);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #35bd8d, #23a97c);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 7px 16px rgba(35, 169, 124, 0.20);
+}
+
+.home-bar-recharge em {
+  min-width: 18px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-style: normal;
+  font-size: 12px;
+}
+
+.my-home.is-app .segmented.is-app {
+  flex: 1;
+  min-width: 0;
   align-self: stretch;
   justify-content: flex-start;
   overflow-x: auto;

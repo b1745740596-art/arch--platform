@@ -4,10 +4,12 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useAccountStore } from '@/stores/account'
+import { isNativeApp } from '@/utils/app'
 
 const { t } = useI18n()
 const router = useRouter()
 const account = useAccountStore()
+const isApp = computed(() => isNativeApp())
 const profileRef = ref()
 const passwordRef = ref()
 const savingProfile = ref(false)
@@ -249,7 +251,7 @@ async function submitPassword() {
 
 <template>
   <div class="account-page">
-    <el-card shadow="never" class="credit-card">
+    <el-card v-if="!isApp" shadow="never" class="credit-card">
       <div class="credit-info">
         <div>
           <span>{{ t('account.creditTitle') }}</span>
