@@ -71,7 +71,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-a { color: var(--el-color-primary); text-decoration: none; }
+a { color: var(--brand-ink); text-decoration: none; }
+
+.el-link { color: var(--brand-ink); }
+.el-link:hover { color: #111827; }
+.el-link--primary { color: var(--brand-ink); }
 
 ::selection { background: rgba(47, 107, 79, 0.18); }
 
