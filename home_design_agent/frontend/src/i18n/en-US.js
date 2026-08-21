@@ -120,6 +120,7 @@ export default {
     noteMatch: 'Matched to your budget',
     installButton: 'Install app',
     downloadApp: 'Download Android App',
+    downloadIOS: 'Download iOS App',
     installTitle: 'Install App',
     installIOS: 'Open this page in Safari, then tap the Share button and choose "Add to Home Screen".',
     installBrowser: 'Use the browser menu to choose "Install app" or "Add to Home Screen".',

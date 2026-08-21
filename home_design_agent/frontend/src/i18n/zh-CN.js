@@ -118,6 +118,7 @@ export default {
     noteMatch: '预算内智能匹配',
     installButton: '安装到桌面',
     downloadApp: '下载 Android App',
+    downloadIOS: '下载 iOS App',
     installTitle: '安装 App',
     installIOS: '请使用 Safari 打开，然后点击底部「分享」按钮，选择「添加到主屏幕」。',
     installBrowser: '请使用浏览器菜单中的「安装应用」或「添加到主屏幕」完成安装。',

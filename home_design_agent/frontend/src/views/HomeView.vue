@@ -112,6 +112,16 @@ const showcase = [
             <el-icon><Cellphone /></el-icon>
             {{ t('home.downloadApp') }}
           </el-button>
+          <el-button
+            tag="a"
+            href="/media/app/arch-ai.ipa"
+            target="_blank"
+            class="download-cta"
+            size="large"
+          >
+            <el-icon><Cellphone /></el-icon>
+            {{ t('home.downloadIOS') }}
+          </el-button>
         </div>
         <div class="hero-chips">
           <span class="chip"><el-icon><Picture /></el-icon> {{ t('home.chipRender') }}</span>

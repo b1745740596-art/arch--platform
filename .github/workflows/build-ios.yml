@@ -1,0 +1,79 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install CocoaPods
+        run: |
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+
+      - name: Install frontend dependencies
+        working-directory: home_design_agent/frontend
+        run: npm install
+
+      - name: Build web assets
+        working-directory: home_design_agent/frontend
+        run: npm run build
+
+      - name: Add iOS platform
+        working-directory: home_design_agent/frontend
+        run: npx cap add ios
+
+      - name: Sync iOS project
+        working-directory: home_design_agent/frontend
+        run: npx cap sync ios
+
+      - name: Build unsigned iOS IPA
+        working-directory: home_design_agent/frontend/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)
+          echo "APP=$APP"
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          zip -r App.ipa Payload
+
+      - name: Publish IPA to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios
+          name: Dream Home iOS
+          files: home_design_agent/frontend/ios/App/App.ipa
+          prerelease: true
+
+      - name: Upload IPA to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "SSH_HOST not configured; skip IPA upload"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/id_rsa home_design_agent/frontend/ios/App/App.ipa "$SSH_USER@$SSH_HOST:/tmp/arch-ai.ipa"
+          ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" "docker run --rm -v home_design_agent_media:/data -v /tmp:/src alpine sh -c 'mkdir -p /data/app && cp /src/arch-ai.ipa /data/app/arch-ai.ipa'"
