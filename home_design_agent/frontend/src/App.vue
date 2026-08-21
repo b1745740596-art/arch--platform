@@ -290,14 +290,14 @@ watch(
 }
 
 .splash-brand {
-  font-size: 40px;
+  font-size: 52px;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: #23a97c;
 }
 
 .splash-tagline {
-  font-size: 15px;
+  font-size: 17px;
   letter-spacing: 0.12em;
   color: #9aa3ad;
 }
