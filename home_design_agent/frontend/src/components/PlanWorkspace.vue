@@ -27,6 +27,7 @@ const records = ref([])
 const projectId = ref(studio.sessionProjectId || null)
 const projectName = ref('')
 const selectedRecordId = ref(null)
+const nameRequired = ref(false)
 
 const draft = reactive({
   plan_name: '',
@@ -167,6 +168,14 @@ function stepValid() {
 }
 
 function nextStep() {
+  if (step.value === 0) {
+    if (!draft.plan_name.trim()) {
+      nameRequired.value = true
+      ElMessage.warning(t('plan.nameRequired'))
+      return
+    }
+    nameRequired.value = false
+  }
   if (!stepValid()) {
     ElMessage.warning(t('plan.stepIncomplete'))
     return
@@ -364,14 +373,16 @@ async function packageRecords() {
     <section class="plan-main">
       <div class="step-content">
         <div v-show="step === 0" class="step-panel">
-          <div class="plan-name-field">
+          <div class="plan-name-field" :class="{ 'has-error': nameRequired }">
             <label>{{ t('plan.nameLabel') }}</label>
             <el-input
               v-model="draft.plan_name"
               :maxlength="40"
               show-word-limit
               :placeholder="t('plan.namePlaceholder')"
+              @input="nameRequired = false"
             />
+            <span v-if="nameRequired" class="name-error-text">{{ t('plan.nameRequired') }}</span>
           </div>
           <div v-if="draft.images.length" class="upload-grid">
             <div v-for="(image, index) in draft.images" :key="image.url" class="upload-tile">
@@ -516,7 +527,7 @@ async function packageRecords() {
 
         <div class="step-actions">
           <el-button :disabled="step === 0" @click="previousStep">{{ t('plan.previous') }}</el-button>
-          <el-button v-if="step < steps.length - 1" type="primary" :disabled="!stepValid()" @click="nextStep">
+          <el-button v-if="step < steps.length - 1" type="primary" @click="nextStep">
             {{ t('plan.next') }}
           </el-button>
         </div>
@@ -759,6 +770,14 @@ async function packageRecords() {
 
 .plan-name-field { display: flex; flex-direction: column; gap: 6px; }
 .plan-name-field label { font-size: 12px; color: var(--brand-muted); font-weight: 700; }
+.plan-name-field.has-error :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px #f56c6c inset;
+}
+.name-error-text {
+  color: #f56c6c;
+  font-size: 12px;
+  font-weight: 600;
+}
 
 .upload-grid {
   display: grid;
