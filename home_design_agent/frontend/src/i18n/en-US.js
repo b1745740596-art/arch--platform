@@ -110,6 +110,7 @@ export default {
     heroTitle: 'Upload a bare-shell photo, get an AI interior render',
     heroSubtitle:
       'Bare-shell photo → render · furniture list with purchase links · contractors · designers',
+    platformDescription: 'Dream Home, your one-stop home design solution',
     ctaPrimary: 'Upload photo and generate render',
     ctaSecondary: 'View my projects',
     heroTagline: 'iPhone design · Green & Oak',

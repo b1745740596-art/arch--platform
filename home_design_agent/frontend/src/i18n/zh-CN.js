@@ -108,6 +108,7 @@ export default {
   home: {
     heroTitle: '上传毛坯照片，AI 生成装修效果图',
     heroSubtitle: '毛坯实拍 → 效果图 · 家具清单与购买链接 · 施工队 · 设计师',
+    platformDescription: '梦想家，您的一站式家装解决平台',
     ctaPrimary: '上传毛坯照片，生成效果图',
     ctaSecondary: '查看我的项目',
     heroTagline: 'iPhone 设计 · 绿意木色',

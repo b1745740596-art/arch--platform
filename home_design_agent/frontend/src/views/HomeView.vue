@@ -42,6 +42,7 @@ const showcase = [
       <div class="hero-copy">
         <h1>{{ t('home.heroTitle') }}</h1>
         <p class="hero-sub">{{ t('home.heroSubtitle') }}</p>
+        <p class="hero-platform">{{ t('home.platformDescription') }}</p>
         <div class="hero-cta">
           <el-button type="primary" size="large" @click="router.push('/my-home')">
             <el-icon><MagicStick /></el-icon>
@@ -193,11 +194,20 @@ const showcase = [
 }
 
 .hero-sub {
-  margin: 0 0 26px;
+  margin: 0 0 14px;
   max-width: 570px;
   color: var(--brand-muted);
   font-size: 17px;
   line-height: 1.7;
+}
+
+.hero-platform {
+  margin: 0 0 24px;
+  max-width: 620px;
+  color: var(--brand-green-deep);
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
 }
 
 .eyebrow-dot {
