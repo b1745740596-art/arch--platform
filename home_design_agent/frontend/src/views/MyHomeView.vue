@@ -917,7 +917,7 @@ watch(
   gap: 12px;
   width: 100%;
   padding: 16px 14px;
-  border: 1px solid var(--app-border);
+  border: 1px solid #e5e7eb;
   border-radius: 18px;
   background: var(--app-surface);
   color: var(--brand-green-deep);
