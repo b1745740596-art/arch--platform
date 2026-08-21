@@ -1,66 +1,24 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { ElMessageBox } from 'element-plus'
 import { currentLocale } from '@/i18n'
-import { useHealthStore } from '@/stores/health'
+import { api } from '@/api/client'
 import IphoneMock from '@/components/IphoneMock.vue'
 
 const router = useRouter()
-const health = useHealthStore()
 const { t } = useI18n()
-const deferredPrompt = ref(null)
-const installable = ref(false)
+const showcaseImages = ref([])
 
-const isStandalone = () =>
-  window.matchMedia('(display-mode: standalone)').matches ||
-  window.navigator.standalone === true
+const bedroomImage = computed(() => showcaseImages.value[0]?.url || '')
 
-const isIOS = () =>
-  /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream
-
-const showInstall = computed(() => installable.value && !isStandalone())
-const showInstallButton = computed(() => !isStandalone())
-
-function onBeforeInstallPrompt(event) {
-  event.preventDefault()
-  deferredPrompt.value = event
-  installable.value = true
-}
-
-async function installApp() {
-  if (deferredPrompt.value) {
-    deferredPrompt.value.prompt()
-    await deferredPrompt.value.userChoice
-    deferredPrompt.value = null
-    installable.value = false
-    return
+onMounted(async () => {
+  try {
+    const data = await api.listShowcaseImages({ room_type: '主卧', limit: 1 })
+    showcaseImages.value = data?.images || []
+  } catch {
+    showcaseImages.value = []
   }
-
-  if (isIOS()) {
-    await ElMessageBox.alert(
-      t('home.installIOS'),
-      t('home.installTitle'),
-      { confirmButtonText: t('home.installOk') },
-    )
-    return
-  }
-
-  await ElMessageBox.alert(
-    t('home.installBrowser'),
-    t('home.installTitle'),
-    { confirmButtonText: t('home.installOk') },
-  )
-}
-
-onMounted(() => {
-  health.check()
-  window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
 })
 
 const steps = [
@@ -72,9 +30,8 @@ const steps = [
 ]
 
 const showcase = [
-  { variant: 'living', label: '现代客厅', en: 'Living room' },
-  { variant: 'bedroom', label: '静谧卧室', en: 'Bedroom' },
-  { variant: 'kitchen', label: '餐厨空间', en: 'Kitchen & dining' },
+  { variant: 'bedroom', label: '静谧卧室', en: 'Bedroom', useLibraryImage: true },
+  { variant: 'kitchen', label: '餐厨空间', en: 'Kitchen & dining', useLibraryImage: false },
 ]
 </script>
 
@@ -83,10 +40,6 @@ const showcase = [
     <!-- Hero / 头图 -->
     <section class="hero">
       <div class="hero-copy">
-        <span class="eyebrow">
-          <span class="eyebrow-dot"></span>
-          {{ t('home.heroTagline') }}
-        </span>
         <h1>{{ t('home.heroTitle') }}</h1>
         <p class="hero-sub">{{ t('home.heroSubtitle') }}</p>
         <div class="hero-cta">
@@ -97,10 +50,6 @@ const showcase = [
           <el-button class="ghost-cta" size="large" @click="router.push('/my-home')">
             {{ t('home.ctaSecondary') }}
             <el-icon><ArrowRight /></el-icon>
-          </el-button>
-          <el-button v-if="showInstallButton" class="install-cta" size="large" @click="installApp">
-            <el-icon><Download /></el-icon>
-            {{ t('home.installButton') }}
           </el-button>
           <el-button
             tag="a"
@@ -164,7 +113,11 @@ const showcase = [
       <div class="showcase-grid">
         <div v-for="(item, index) in showcase" :key="item.variant" class="showcase-card">
           <div class="showcase-stage">
-            <IphoneMock :variant="item.variant" :tone="index === 1 ? 'wood' : 'green'" />
+            <IphoneMock
+              :variant="item.variant"
+              :tone="index === 0 ? 'wood' : 'green'"
+              :image-url="item.useLibraryImage ? bedroomImage : ''"
+            />
           </div>
           <div class="showcase-meta">
             <div class="showcase-title">{{ currentLocale === 'en-US' ? item.en : item.label }}</div>
@@ -191,32 +144,6 @@ const showcase = [
         </div>
       </div>
     </section>
-
-    <!-- 后端连通性 -->
-    <el-card shadow="never" class="health">
-      <template #header>
-        <div class="health-head">
-          <span class="health-title">
-            <span class="status-dot"></span>
-            {{ t('home.health.title') }}
-          </span>
-          <el-button text type="primary" @click="health.check()">
-            <el-icon><Refresh /></el-icon>
-            {{ t('home.health.recheck') }}
-          </el-button>
-        </div>
-      </template>
-      <el-skeleton v-if="health.loading" :rows="1" animated />
-      <el-alert v-else-if="health.error" type="error" :closable="false"
-        :title="t('home.health.failed', { msg: health.error })" />
-      <el-descriptions v-else-if="health.status" :column="3" border>
-        <el-descriptions-item :label="t('home.health.status')">
-          <el-tag type="success">{{ health.status.status }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item :label="t('home.health.app')">{{ health.status.app }}</el-descriptions-item>
-        <el-descriptions-item :label="t('home.health.django')">{{ health.status.django }}</el-descriptions-item>
-      </el-descriptions>
-    </el-card>
   </div>
 </template>
 
@@ -284,18 +211,14 @@ const showcase = [
 .hero-cta {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
   gap: 12px;
 }
 
 .ghost-cta {
   background: rgba(255, 255, 255, 0.62);
   border: 1px solid rgba(47, 107, 79, 0.16);
-  color: var(--brand-green-deep);
-}
-
-.install-cta {
-  background: rgba(47, 107, 79, 0.10);
-  border: 1px dashed rgba(47, 107, 79, 0.40);
   color: var(--brand-green-deep);
 }
 

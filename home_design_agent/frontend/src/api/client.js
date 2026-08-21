@@ -91,6 +91,7 @@ paymentsClient.interceptors.response.use(
 export const api = {
   health: () => client.get('/health/'),
   appVersion: () => client.get('/app-version/'),
+  listShowcaseImages: (params) => client.get('/showcase-images/', { params }),
   // 项目
   listProjects: () => client.get('/projects/'),
   getProject: (id) => client.get(`/projects/${id}/`),

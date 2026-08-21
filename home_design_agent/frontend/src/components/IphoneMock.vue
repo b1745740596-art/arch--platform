@@ -5,6 +5,7 @@ defineProps({
   variant: { type: String, default: 'living' },
   label: { type: String, default: '' },
   tone: { type: String, default: 'green' },
+  imageUrl: { type: String, default: '' },
 })
 </script>
 
@@ -14,7 +15,8 @@ defineProps({
       <div class="speaker"></div>
       <div class="island"></div>
       <div class="screen">
-        <InteriorScene :variant="variant" />
+        <img v-if="imageUrl" class="scene-img" :src="imageUrl" alt="AI render" />
+        <InteriorScene v-else :variant="variant" />
         <div class="screen-ui">
           <span class="ui-pill">AI Render</span>
           <span class="ui-caption">Green · Oak</span>
@@ -27,6 +29,12 @@ defineProps({
 </template>
 
 <style scoped>
+.scene-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .phone-wrap {
   display: inline-flex;
   flex-direction: column;

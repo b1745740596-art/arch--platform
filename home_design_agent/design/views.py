@@ -61,6 +61,46 @@ def health(request):
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
+def showcase_images(request):
+    """首页效果图库：返回最近成功生成的 AI 效果图，供展示区使用。
+
+    不返回用户、提示词等隐私信息，仅返回公开预览所需字段。
+    """
+    room_type = request.query_params.get('room_type', '')
+    try:
+        limit = max(1, min(int(request.query_params.get('limit', 3)), 12))
+    except (TypeError, ValueError):
+        limit = 3
+
+    jobs = RenderJob.objects.filter(status=RenderJob.Status.SUCCESS).order_by('-created_at')
+    if room_type:
+        jobs = jobs.filter(room_type=room_type)
+
+    images = []
+    for job in jobs.iterator():
+        url = ''
+        if job.result_image:
+            url = job.result_image.url
+            if request:
+                url = request.build_absolute_uri(url)
+        elif job.result_image_url:
+            url = job.result_image_url
+        if not url:
+            continue
+        images.append({
+            'id': job.id,
+            'url': url,
+            'room_type': job.room_type,
+            'style': job.style,
+        })
+        if len(images) >= limit:
+            break
+
+    return Response({'images': images})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
 def app_release(request):
     """App 端自动更新配置。
 

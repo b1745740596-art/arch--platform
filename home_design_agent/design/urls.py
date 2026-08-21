@@ -21,6 +21,7 @@ router.register('orders', views.HomeOrderViewSet, basename='home-order')
 
 urlpatterns = [
     path('health/', views.health, name='health'),
+    path('showcase-images/', views.showcase_images, name='showcase-images'),
     path('app-version/', views.app_release, name='app-version'),
     path('auth/register/', views.register_user, name='auth-register'),
     path('auth/login/', views.login_user, name='auth-login'),
