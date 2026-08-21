@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import { getAppVersion, hasNewVersion, isNativeApp } from '@/utils/app'
+import ApkUpdater from '@/plugins/apk-updater'
 
 export const useAppUpdateStore = defineStore('appUpdate', () => {
   const loading = ref(false)
@@ -34,9 +35,9 @@ export const useAppUpdateStore = defineStore('appUpdate', () => {
   function downloadLatest() {
     if (!latest.value?.apk_url) return
     const url = new URL(latest.value.apk_url, window.location.origin).href
-    // 原生壳内 WebView 不会触发 <a download> 下载，交给系统浏览器打开下载地址。
+    // 原生壳内直接下载 APK 并拉起系统安装器。
     if (isNativeApp()) {
-      window.open(url, '_system', 'location=yes')
+      ApkUpdater.downloadAndInstall({ url })
       return
     }
     const link = document.createElement('a')

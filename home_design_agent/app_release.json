@@ -1,9 +1,9 @@
 {
-  "version": "1.3.3",
-  "build": 10,
-  "apk_url": "/media/app/arch-ai.apk?v=1.3.3",
+  "version": "1.3.4",
+  "build": 11,
+  "apk_url": "/media/app/arch-ai.apk?v=1.3.4",
   "changelog": [
-    "支持 App 内直接覆盖安装更新"
+    "App 内直接下载并拉起安装器"
   ],
   "force_update": false
 }
