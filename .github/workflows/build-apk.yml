@@ -56,7 +56,7 @@ jobs:
           print('versionCode', build, 'versionName', version)
           PY
 
-      - name: Replace splash with plain white screen
+      - name: Replace splash and status bar with white
         working-directory: home_design_agent/frontend
         run: |
           cp resources/splash.png android/app/src/main/res/drawable/splash.png
@@ -64,17 +64,40 @@ jobs:
             cp resources/splash.png "$dir/splash.png"
           done
           python3 - <<'PY'
-          import pathlib, re
+          import pathlib
           styles = pathlib.Path('android/app/src/main/res/values/styles.xml')
-          text = styles.read_text()
-          block = '''    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-              <item name="android:background">@drawable/splash</item>
-              <item name="android:windowSplashScreenBackground">#FFFFFF</item>
-              <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash</item>
-          </style>'''
-          text = re.sub(r'<style name="AppTheme\.NoActionBarLaunch"[^>]*>.*?</style>', block, text, flags=re.S)
-          styles.write_text(text)
-          print('splash patched')
+          styles.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+                  <item name="colorPrimary">@color/colorPrimary</item>
+                  <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+                  <item name="colorAccent">@color/colorAccent</item>
+                  <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+                  <item name="android:windowLightStatusBar">true</item>
+              </style>
+              <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+                  <item name="windowActionBar">false</item>
+                  <item name="windowNoTitle">true</item>
+                  <item name="android:background">@null</item>
+                  <item name="android:statusBarColor">@color/colorPrimaryDark</item>
+                  <item name="android:windowLightStatusBar">true</item>
+              </style>
+              <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+                  <item name="android:background">@drawable/splash</item>
+                  <item name="android:windowSplashScreenBackground">#FFFFFF</item>
+                  <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash</item>
+                  <item name="android:statusBarColor">#FFFFFF</item>
+                  <item name="android:windowLightStatusBar">true</item>
+              </style>
+          </resources>''')
+          colors = pathlib.Path('android/app/src/main/res/values/colors.xml')
+          colors.write_text('''<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="colorPrimary">#FFFFFF</color>
+              <color name="colorPrimaryDark">#FFFFFF</color>
+              <color name="colorAccent">#23A97C</color>
+          </resources>''')
+          print('splash and status bar patched')
           PY
 
       - name: Build debug APK
