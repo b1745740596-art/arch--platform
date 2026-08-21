@@ -1,11 +1,10 @@
 {
-  "version": "1.2.1",
-  "build": 6,
-  "apk_url": "/media/app/arch-ai.apk?v=1.2.1",
+  "version": "1.3.0",
+  "build": 7,
+  "apk_url": "/media/app/arch-ai.apk?v=1.3.0",
   "changelog": [
-    "生成流程改为分步 SOP，并将记录放到输入框下方",
-    "点击生成记录可查看大图、设计师与家具清单",
-    "统一白色背景与清透绿主题"
+    "应用更名为梦想家",
+    "新增白色开屏与开启梦想家之旅文案"
   ],
   "force_update": false
 }
