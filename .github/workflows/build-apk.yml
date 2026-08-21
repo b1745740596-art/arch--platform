@@ -118,7 +118,7 @@ jobs:
                       keyPassword 'dre@mhome2024'
                   }
               }
-      '''
+          '''
           if 'signingConfigs' not in text:
               text = text.replace('    buildTypes {', signing + '    buildTypes {', 1)
           text = re.sub(
