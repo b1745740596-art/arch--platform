@@ -26,8 +26,8 @@ from .models import (
 User = get_user_model()
 
 # ---- 后台站点品牌 ----
-admin.site.site_header = 'Arch_AI Platform 后台'
-admin.site.site_title = 'Arch_AI Platform'
+admin.site.site_header = '梦想家 后台'
+admin.site.site_title = '梦想家'
 admin.site.index_title = '控制台'
 
 

@@ -1,5 +1,8 @@
 export default {
-  brand: 'Arch_AI Platform',
+  brand: '梦想家',
+  splash: {
+    tagline: '开启梦想家之旅',
+  },
   nav: {
     home: '首页',
     myHome: '我的家',
@@ -82,7 +85,7 @@ export default {
     changelog: '更新内容',
     failed: '检查更新失败：{msg}',
   },
-  footer: 'Arch_AI Platform · 研究预览 · 效果仅供参考，最终以现场量房与可施工校验为准',
+  footer: '梦想家 · 研究预览 · 效果仅供参考，最终以现场量房与可施工校验为准',
   common: {
     none: '暂无',
     dash: '—',

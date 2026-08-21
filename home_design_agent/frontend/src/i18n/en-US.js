@@ -1,5 +1,8 @@
 export default {
-  brand: 'Arch_AI Platform',
+  brand: 'Dream Home',
+  splash: {
+    tagline: 'Start your dream home journey',
+  },
   nav: {
     home: 'Home',
     myHome: 'My Home',
@@ -83,7 +86,7 @@ export default {
     failed: 'Update check failed: {msg}',
   },
   footer:
-    'Arch_AI Platform · Research preview · Renders are for reference only; final results require on-site measurement and buildability review',
+    'Dream Home · Research preview · Renders are for reference only; final results require on-site measurement and buildability review',
   common: {
     none: 'None',
     dash: '—',

@@ -17,6 +17,7 @@ const auth = useAuthStore()
 const appUpdate = useAppUpdateStore()
 const settingsVisible = ref(false)
 const chatVisible = ref(false)
+const splashVisible = ref(true)
 let autoUpdatePromptShown = false
 
 const isApp = computed(() => isNativeApp())
@@ -75,6 +76,11 @@ onMounted(() => {
   auth.restoreSession()
   if (isApp.value) appUpdate.check()
   configureAppChrome()
+  if (isApp.value) {
+    window.setTimeout(() => {
+      splashVisible.value = false
+    }, 1600)
+  }
 })
 
 watch(
@@ -103,6 +109,14 @@ watch(
 <template>
   <el-config-provider :locale="elementLocale">
     <div class="app" :class="{ 'is-app': isApp }">
+      <transition name="splash-fade">
+        <div v-if="isApp && splashVisible" class="app-splash" aria-hidden="true">
+          <div class="splash-inner">
+            <b class="splash-brand">{{ t('brand') }}</b>
+            <span class="splash-tagline">{{ t('splash.tagline') }}</span>
+          </div>
+        </div>
+      </transition>
       <header v-if="!isApp" class="topbar">
         <div class="topbar-inner">
           <router-link class="brand" :to="defaultPath">
@@ -255,6 +269,47 @@ watch(
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+.app-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+}
+
+.splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 0 32px;
+  text-align: center;
+}
+
+.splash-brand {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--brand-green-deep);
+}
+
+.splash-tagline {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--brand-muted);
+}
+
+.splash-fade-enter-active,
+.splash-fade-leave-active {
+  transition: opacity 0.4s ease;
+}
+
+.splash-fade-enter-from,
+.splash-fade-leave-to {
+  opacity: 0;
 }
 
 .topbar {

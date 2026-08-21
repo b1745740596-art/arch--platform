@@ -313,7 +313,7 @@ LOGGING = {
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ---- SimpleUI 后台配置 ----
-SIMPLEUI_HOME_TITLE = 'Arch_AI Platform 控制台'
+SIMPLEUI_HOME_TITLE = '梦想家 控制台'
 SIMPLEUI_HOME_INFO = False
 SIMPLEUI_ANALYSIS = False          # 关闭匿名统计上报
 SIMPLEUI_STATIC_OFFLINE = True     # 使用本地静态资源，不依赖 CDN
@@ -323,11 +323,11 @@ SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
 # 自定义左侧菜单，按 PRD 功能域组织
 SIMPLEUI_CONFIG = {
     'system_keep': True,
-    'menu_display': ['Arch_AI Platform', '工作流', '用户管理', '支付管理'],
+    'menu_display': ['梦想家', '工作流', '用户管理', '支付管理'],
     'dynamic': False,
     'menus': [
         {
-            'name': 'Arch_AI Platform',
+            'name': '梦想家',
             'icon': 'fas fa-couch',
             'models': [
                 {'name': '业主', 'icon': 'fas fa-user-tie', 'url': '/admin/design/owner/'},
