@@ -1,7 +1,7 @@
 {
   "appId": "com.archai.home",
   "appName": "梦想家",
-  "version": "1.3.0",
+  "version": "1.2.1",
   "backgroundColor": "#ffffff",
   "webDir": "../frontend_dist",
   "server": {
