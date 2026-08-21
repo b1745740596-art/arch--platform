@@ -290,16 +290,16 @@ watch(
 }
 
 .splash-brand {
-  font-size: 30px;
+  font-size: 40px;
   font-weight: 800;
-  letter-spacing: 0.04em;
-  color: var(--brand-green-deep);
+  letter-spacing: 0.02em;
+  color: #23a97c;
 }
 
 .splash-tagline {
-  font-size: 14px;
-  letter-spacing: 0.08em;
-  color: var(--brand-muted);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  color: #9aa3ad;
 }
 
 .splash-fade-enter-active,
