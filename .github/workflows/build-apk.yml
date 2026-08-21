@@ -100,6 +100,44 @@ jobs:
           print('splash and status bar patched')
           PY
 
+      - name: Configure stable APK signing
+        working-directory: home_design_agent/frontend
+        run: |
+          cp resources/keystore.p12 android/app/keystore.p12
+          python3 - <<'PY'
+          import pathlib, re
+          gradle = pathlib.Path('android/app/build.gradle')
+          text = gradle.read_text()
+          signing = '''    signingConfigs {
+                  release {
+                      storeFile file('keystore.p12')
+                      storePassword 'dre@mhome2024'
+                      keyAlias 'dream-home'
+                      keyPassword 'dre@mhome2024'
+                  }
+              }
+      '''
+          if 'signingConfigs' not in text:
+              text = text.replace('    buildTypes {', signing + '    buildTypes {', 1)
+          text = re.sub(
+              r'    buildTypes \{\s*\n        release \{\s*\n            minifyEnabled false\s*\n            proguardFiles[^\n]*\n        \}\n    \}',
+              '''    buildTypes {
+                  debug {
+                      signingConfig signingConfigs.release
+                  }
+                  release {
+                      minifyEnabled false
+                      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+                      signingConfig signingConfigs.release
+                  }
+              }''',
+              text,
+              flags=re.S,
+          )
+          gradle.write_text(text)
+          print('signing configured')
+          PY
+
       - name: Build debug APK
         working-directory: home_design_agent/frontend/android
         run: ./gradlew assembleDebug --no-daemon
