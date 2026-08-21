@@ -56,6 +56,27 @@ jobs:
           print('versionCode', build, 'versionName', version)
           PY
 
+      - name: Replace splash with plain white screen
+        working-directory: home_design_agent/frontend
+        run: |
+          cp resources/splash.png android/app/src/main/res/drawable/splash.png
+          for dir in android/app/src/main/res/drawable*/; do
+            cp resources/splash.png "$dir/splash.png"
+          done
+          python3 - <<'PY'
+          import pathlib, re
+          styles = pathlib.Path('android/app/src/main/res/values/styles.xml')
+          text = styles.read_text()
+          block = '''    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+              <item name="android:background">@drawable/splash</item>
+              <item name="android:windowSplashScreenBackground">#FFFFFF</item>
+              <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash</item>
+          </style>'''
+          text = re.sub(r'<style name="AppTheme\.NoActionBarLaunch"[^>]*>.*?</style>', block, text, flags=re.S)
+          styles.write_text(text)
+          print('splash patched')
+          PY
+
       - name: Build debug APK
         working-directory: home_design_agent/frontend/android
         run: ./gradlew assembleDebug --no-daemon
