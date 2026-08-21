@@ -111,3 +111,20 @@ jobs:
           name: Arch AI APK
           files: home_design_agent/frontend/android/app/build/outputs/apk/debug/app-debug.apk
           prerelease: false
+
+      - name: Upload APK to server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          if [ -z "$SSH_HOST" ]; then
+            echo "SSH_HOST not configured; skip APK upload"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/id_rsa home_design_agent/frontend/android/app/build/outputs/apk/debug/app-debug.apk "$SSH_USER@$SSH_HOST:/tmp/arch-ai.apk"
+          ssh -i ~/.ssh/id_rsa "$SSH_USER@$SSH_HOST" "docker run --rm -v home_design_agent_media:/data -v /tmp:/src alpine sh -c 'mkdir -p /data/app && cp /src/arch-ai.apk /data/app/arch-ai.apk'"
