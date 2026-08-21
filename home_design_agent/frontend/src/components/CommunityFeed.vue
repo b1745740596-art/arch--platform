@@ -60,12 +60,14 @@ const summaries = [
 
 const types = ['furniture', 'designer', 'contractor']
 
+const visibleTitles = titles.slice(0, 15)
+
 const covers = Array.from(
-  { length: titles.length },
+  { length: visibleTitles.length },
   (_, index) => `/media/renders/render_${index + 1}.png`,
 )
 
-const posts = titles.map((title, index) => ({
+const posts = visibleTitles.map((title, index) => ({
   type: types[index % types.length],
   title,
   author: authors[index % authors.length],
@@ -87,7 +89,7 @@ function typeLabel(type) {
     <div class="post-grid">
       <article v-for="post in posts" :key="post.title" class="post-card">
         <div class="post-cover">
-          <img :src="post.cover" :alt="post.title" loading="lazy" />
+          <img :src="post.cover" :alt="post.title" loading="lazy" decoding="async" />
           <span class="post-type">{{ typeLabel(post.type) }}</span>
         </div>
         <div class="post-copy">
@@ -117,7 +119,7 @@ function typeLabel(type) {
 
 .post-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -161,6 +163,6 @@ function typeLabel(type) {
 .post-copy p { margin: 5px 0 0; color: var(--brand-ink); font-size: 10px; line-height: 1.4; }
 
 @media (max-width: 720px) {
-  .post-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .post-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 </style>
