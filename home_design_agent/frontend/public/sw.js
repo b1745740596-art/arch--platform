@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arch-ai-v2'
+const CACHE_NAME = 'arch-ai-v3'
 const APP_SHELL = ['/', '/static/spa/manifest.webmanifest', '/static/spa/icons/icon-192.png', '/static/spa/icons/icon-512.png']
 
 self.addEventListener('install', (event) => {
