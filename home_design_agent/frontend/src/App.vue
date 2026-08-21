@@ -396,7 +396,7 @@ watch(
   transition: color 0.18s ease, background 0.18s ease;
 }
 
-.nav-item:hover { color: var(--brand-green); background: rgba(35, 169, 124, 0.07); }
+.nav-item:hover { color: var(--brand-ink); background: rgba(35, 169, 124, 0.07); }
 .nav-item.active { color: var(--brand-green-deep); background: rgba(35, 169, 124, 0.11); }
 
 .actions {
@@ -461,7 +461,7 @@ watch(
   cursor: pointer;
 }
 
-.ghost-link:hover { color: var(--brand-green); }
+.ghost-link:hover { color: var(--brand-ink); }
 
 .auth-link {
   padding: 8px 13px;

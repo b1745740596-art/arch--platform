@@ -844,9 +844,9 @@ watch(
 }
 
 .seg-item.active {
-  background: linear-gradient(135deg, #35bd8d, #23a97c);
-  color: #fff;
-  box-shadow: 0 7px 16px rgba(35, 169, 124, 0.20);
+  background: #f3f4f6;
+  color: #111827;
+  box-shadow: none;
 }
 
 /* App 端：去掉营销头部后，让核心生成区直接顶到首屏，
@@ -867,15 +867,15 @@ watch(
 }
 
 .seg-item.recharge-item {
-  color: var(--brand-green-deep);
+  color: #111827;
 }
 
 .seg-item.recharge-item em {
   min-width: 18px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: rgba(35, 169, 124, 0.12);
-  color: var(--brand-green-deep);
+  background: #f3f4f6;
+  color: #9aa3ad;
   font-style: normal;
   font-size: 12px;
 }
@@ -1102,7 +1102,7 @@ watch(
 .report-kicker {
   display: inline-block;
   margin-bottom: 6px;
-  color: var(--brand-green);
+  color: var(--brand-ink);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;

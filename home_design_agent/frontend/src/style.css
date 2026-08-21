@@ -1,15 +1,15 @@
 :root {
   /* Clean white + fresh green palette */
   --brand-green: #23a97c;
-  --brand-green-deep: #12845f;
-  --brand-green-soft: #e7f8f0;
+  --brand-green-deep: #111827;
+  --brand-green-soft: #eef2f0;
   --brand-moss: #5fc39c;
   --brand-wood: #3fce9a;
-  --brand-wood-deep: #1b9a6f;
-  --brand-wood-soft: #e7f8f0;
+  --brand-wood-deep: #111827;
+  --brand-wood-soft: #eef2f0;
   --brand-ivory: #ffffff;
-  --brand-ink: #1f2d26;
-  --brand-muted: #697b71;
+  --brand-ink: #111827;
+  --brand-muted: #9aa3ad;
 
   --app-bg: #ffffff;
   --app-surface: #ffffff;
@@ -30,9 +30,9 @@
   --el-color-warning: #d8a144;
   --el-color-danger: #c15d4d;
   --el-color-error: #c15d4d;
-  --el-text-color-primary: #1f2d26;
-  --el-text-color-regular: #3b4b41;
-  --el-text-color-secondary: #697b71;
+  --el-text-color-primary: #111827;
+  --el-text-color-regular: #4b5563;
+  --el-text-color-secondary: #9aa3ad;
   --el-border-color: rgba(35, 169, 124, 0.16);
   --el-border-color-light: rgba(35, 169, 124, 0.11);
   --el-border-color-lighter: rgba(35, 169, 124, 0.08);
@@ -136,7 +136,7 @@ a { color: var(--el-color-primary); text-decoration: none; }
   --el-table-row-hover-bg-color: rgba(35, 169, 124, 0.05);
 }
 
-.el-page-header__left:hover { color: var(--brand-green); }
+.el-page-header__left:hover { color: var(--brand-ink); }
 
 /* Shared page rhythm */
 .page-stack {
@@ -155,7 +155,7 @@ a { color: var(--el-color-primary); text-decoration: none; }
   border: 1px solid rgba(47, 107, 79, 0.16);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.65);
-  color: var(--brand-green);
+  color: var(--brand-muted);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;

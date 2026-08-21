@@ -810,7 +810,7 @@ async function packageRecords() {
   gap: 4px;
   border: 1.5px dashed rgba(35, 169, 124, 0.32);
   border-radius: 12px;
-  color: var(--brand-green);
+  color: var(--brand-ink);
   font-size: 12px;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.66);

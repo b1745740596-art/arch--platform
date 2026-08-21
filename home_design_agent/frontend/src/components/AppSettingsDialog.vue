@@ -240,7 +240,7 @@ async function logout() {
 .version-line b { color: var(--brand-ink); }
 
 .changelog { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(35, 169, 124, 0.16); }
-.changelog-title { font-size: 12px; font-weight: 800; color: var(--brand-green); margin-bottom: 4px; }
+.changelog-title { font-size: 12px; font-weight: 800; color: var(--brand-ink); margin-bottom: 4px; }
 .changelog-item { color: var(--brand-muted); font-size: 12px; line-height: 1.7; }
 
 .update-error { margin-top: 10px; }

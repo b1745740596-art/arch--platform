@@ -248,5 +248,5 @@ onUnmounted(() => {
 
 <style scoped>
 .auth-card { max-width: 460px; margin: 0 auto; }
-.forgot-link { margin-left: auto; font-size: 13px; color: var(--brand-green); }
+.forgot-link { margin-left: auto; font-size: 13px; color: var(--brand-ink); }
 </style>
