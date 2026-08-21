@@ -1,12 +1,21 @@
 name: Deploy
 
-# 推 main 时：先跑基础检查，再 SSH 到服务器重新构建发布。
+# 推 main 时：先在 GitHub Actions 上构建并推送镜像，再 SSH 到服务器 pull 启动，
+# 不在服务器上执行 docker build，避免小内存机器构建时 OOM。
 # 需在仓库 Settings → Secrets and variables → Actions 配置：
-#   SSH_HOST / SSH_USER / SSH_KEY / DEPLOY_PATH
+#   SSH_HOST / SSH_USER / SSH_KEY / DEPLOY_PATH / HEALTH_URL
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
   check:
@@ -46,8 +55,25 @@ jobs:
           npm install
           npm run build
 
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.repository_owner }}" --password-stdin
+
+      - name: Build and push web image
+        working-directory: home_design_agent
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/arch-platform-web
+        run: |
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker push "$IMAGE:${{ github.sha }}"
+          docker push "$IMAGE:latest"
+
   deploy:
-    needs: check
+    needs: [check, build-push]
     runs-on: ubuntu-latest
     # 只有配置了服务器信息才执行，避免 fork 或未配 secret 时报错
     if: github.ref == 'refs/heads/main'
@@ -58,6 +84,8 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "$SSH_HOST" ]; then
             echo "未配置 SSH_HOST，跳过自动部署"
@@ -73,7 +101,9 @@ jobs:
             git -C "$REPO_ROOT" fetch origin --quiet
             git -C "$REPO_ROOT" reset --hard origin/main
             cd "$DEPLOY_PATH"
-            docker compose up -d --build
+            printf '%s\n' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose pull web
+            docker compose up -d --no-build
             docker compose restart nginx
             docker compose ps
           EOF

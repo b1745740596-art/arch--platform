@@ -19,6 +19,7 @@ services:
   web:
     build:
       context: .
+    image: ghcr.io/b1745740596-art/arch-platform-web:latest
     restart: unless-stopped
     depends_on:
       db:
