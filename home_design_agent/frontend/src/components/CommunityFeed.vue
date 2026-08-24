@@ -1,6 +1,23 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 
+import communityCover01 from '@/assets/community/community-01.jpg'
+import communityCover02 from '@/assets/community/community-02.jpg'
+import communityCover03 from '@/assets/community/community-03.jpg'
+import communityCover04 from '@/assets/community/community-04.jpg'
+import communityCover05 from '@/assets/community/community-05.jpg'
+import communityCover06 from '@/assets/community/community-06.jpg'
+import communityCover07 from '@/assets/community/community-07.jpg'
+import communityCover08 from '@/assets/community/community-08.jpg'
+import communityCover09 from '@/assets/community/community-09.jpg'
+import communityCover10 from '@/assets/community/community-10.jpg'
+import communityCover11 from '@/assets/community/community-11.jpg'
+import communityCover12 from '@/assets/community/community-12.jpg'
+import communityCover13 from '@/assets/community/community-13.jpg'
+import communityCover14 from '@/assets/community/community-14.jpg'
+import communityCover15 from '@/assets/community/community-15.jpg'
+import fallbackCover from '@/assets/hero.png'
+
 const { t } = useI18n()
 
 const titles = [
@@ -62,10 +79,26 @@ const types = ['furniture', 'designer', 'contractor']
 
 const visibleTitles = titles.slice(0, 15)
 
-const covers = Array.from(
-  { length: visibleTitles.length },
-  (_, index) => `/media/renders/render_${index + 1}.png`,
-)
+// Community covers are product content, not user-owned render output. Bundling them with
+// the SPA keeps the URLs valid in both the browser and the Capacitor app, and avoids the
+// authenticated /media route used for private project files.
+const covers = [
+  communityCover01,
+  communityCover02,
+  communityCover03,
+  communityCover04,
+  communityCover05,
+  communityCover06,
+  communityCover07,
+  communityCover08,
+  communityCover09,
+  communityCover10,
+  communityCover11,
+  communityCover12,
+  communityCover13,
+  communityCover14,
+  communityCover15,
+]
 
 const posts = visibleTitles.map((title, index) => ({
   type: types[index % types.length],
@@ -78,6 +111,13 @@ const posts = visibleTitles.map((title, index) => ({
 function typeLabel(type) {
   return t(`community.${type}`)
 }
+
+function handleCoverError(event) {
+  const image = event.currentTarget
+  if (!image || image.dataset.fallbackApplied === 'true') return
+  image.dataset.fallbackApplied = 'true'
+  image.src = fallbackCover
+}
 </script>
 
 <template>
@@ -89,7 +129,13 @@ function typeLabel(type) {
     <div class="post-grid">
       <article v-for="post in posts" :key="post.title" class="post-card">
         <div class="post-cover">
-          <img :src="post.cover" :alt="post.title" loading="lazy" decoding="async" />
+          <img
+            :src="post.cover"
+            :alt="post.title"
+            loading="lazy"
+            decoding="async"
+            @error="handleCoverError"
+          />
           <span class="post-type">{{ typeLabel(post.type) }}</span>
         </div>
         <div class="post-copy">
