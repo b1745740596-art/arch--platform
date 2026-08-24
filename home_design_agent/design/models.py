@@ -469,7 +469,7 @@ class RenderJob(TimestampedModel):
 
 
 class GenerationConfig(models.Model):
-    """图像生成 API 配置（单例，后台可填 Key/端点/模型/提示词模板）。"""
+    """AI provider configuration managed as a singleton in the admin."""
 
     name = models.CharField('配置名', max_length=50, default='default', unique=True)
     api_base = models.CharField(
@@ -503,6 +503,31 @@ class GenerationConfig(models.Model):
     )
     enabled = models.BooleanField('启用真实调用', default=False,
         help_text='未启用时仅生成占位图与规则文案；启用后调用大模型生成设计说明')
+    # ---- 谈单机器人（独立于设计说明/生图链路）----
+    talkbot_enabled = models.BooleanField(
+        '启用谈单机器人 API',
+        default=False,
+        help_text='启用后 TalkBot 调用下方文本模型；未配置或调用失败时自动回退规则回复',
+    )
+    talkbot_api_base = models.CharField(
+        '机器人 API Base URL',
+        max_length=300,
+        blank=True,
+        default='https://api.deepseek.com',
+        help_text='必须使用 HTTPS；DeepSeek 官方地址：https://api.deepseek.com',
+    )
+    talkbot_api_key_encrypted = models.TextField(
+        '机器人 API Key（密文）',
+        blank=True,
+        editable=False,
+    )
+    talkbot_model = models.CharField(
+        '机器人模型名',
+        max_length=100,
+        blank=True,
+        default='deepseek-v4-flash',
+        help_text='例如 deepseek-v4-flash 或 deepseek-v4-pro',
+    )
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 
     class Meta:
@@ -510,6 +535,20 @@ class GenerationConfig(models.Model):
 
     def __str__(self):
         return f'生成配置（{self.model or "未设置"}）'
+
+    @property
+    def has_talkbot_api_key(self) -> bool:
+        return bool(self.talkbot_api_key_encrypted)
+
+    def set_talkbot_api_key(self, value: str) -> None:
+        from config.secret_storage import encrypt_secret
+
+        self.talkbot_api_key_encrypted = encrypt_secret(value)
+
+    def get_talkbot_api_key(self) -> str:
+        from config.secret_storage import decrypt_secret
+
+        return decrypt_secret(self.talkbot_api_key_encrypted)
 
     @classmethod
     def load(cls):

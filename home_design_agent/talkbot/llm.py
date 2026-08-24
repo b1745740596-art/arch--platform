@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 from django.conf import settings
+from django.db import OperationalError, ProgrammingError
 
 from config.privacy import redact_sensitive_text
+from config.provider_security import is_safe_https_endpoint
+from config.secret_storage import SecretDecryptionError
 
 
 DEFAULT_DEEPSEEK_API_BASE = 'https://api.deepseek.com'
@@ -29,25 +31,61 @@ class DeepSeekConfig:
     model: str
     timeout: float
     max_retries: int
+    source: str = 'environment'
 
     @property
     def configured(self) -> bool:
-        endpoint = urlparse(self.api_base)
-        safe_endpoint = (
-            endpoint.scheme == 'https'
-            and bool(endpoint.hostname)
-            and not endpoint.username
-            and not endpoint.password
-            and not endpoint.query
-            and not endpoint.fragment
+        return bool(self.api_key and self.model and is_safe_https_endpoint(self.api_base))
+
+
+def _load_admin_override() -> tuple[bool, str, str, str] | None:
+    """Return admin-managed settings when a key has been entered there."""
+    try:
+        from design.models import GenerationConfig
+
+        stored = (
+            GenerationConfig.objects.only(
+                'talkbot_enabled',
+                'talkbot_api_base',
+                'talkbot_api_key_encrypted',
+                'talkbot_model',
+            )
+            .filter(name='default')
+            .first()
         )
-        return bool(self.api_key and self.model and safe_endpoint)
+    except (OperationalError, ProgrammingError):
+        # Startup/migration commands must still work before the new columns exist.
+        return None
+    if not stored or not stored.has_talkbot_api_key:
+        return None
+    try:
+        api_key = stored.get_talkbot_api_key()
+    except SecretDecryptionError:
+        api_key = ''
+    return (
+        stored.talkbot_enabled,
+        api_key,
+        (stored.talkbot_api_base or DEFAULT_DEEPSEEK_API_BASE).rstrip('/'),
+        (stored.talkbot_model or DEFAULT_DEEPSEEK_MODEL).strip(),
+    )
 
 
 def load_deepseek_config() -> DeepSeekConfig:
-    """Load provider secrets from the process environment via Django settings."""
+    """Load an encrypted admin override, falling back to deployment settings."""
     timeout = max(3.0, min(float(settings.DEEPSEEK_TIMEOUT_SECONDS), 60.0))
     max_retries = max(0, min(int(settings.DEEPSEEK_MAX_RETRIES), 2))
+    admin_override = _load_admin_override()
+    if admin_override:
+        enabled, api_key, api_base, model = admin_override
+        return DeepSeekConfig(
+            enabled=enabled,
+            api_key=api_key,
+            api_base=api_base,
+            model=model,
+            timeout=timeout,
+            max_retries=max_retries,
+            source='admin',
+        )
     return DeepSeekConfig(
         enabled=settings.TALKBOT_LLM_ENABLED,
         api_key=(settings.DEEPSEEK_API_KEY or '').strip(),

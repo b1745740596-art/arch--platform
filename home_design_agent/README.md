@@ -155,7 +155,7 @@ App 底部「AI 顾问」与 Web `/talk` 已接入多轮谈单链路：
 - `POST /api/talkbot/sessions/{id}/messages/`：发送消息并同步获得回复；
 - `POST /api/talkbot/sessions/{id}/convert/`：确认授权后生成方案与项目订单。
 
-基础知识库和默认流程由迁移自动写入，也可幂等刷新：`python manage.py seed_talkbot`。TalkBot 文本模型接入 DeepSeek 官方 OpenAI-compatible API：在服务器 Secret 或 `.env` 配置 `DEEPSEEK_API_KEY`，再设置 `TALKBOT_LLM_ENABLED=true` 即可启用；默认模型是低延迟的 `deepseek-v4-flash`，可用 `DEEPSEEK_MODEL=deepseek-v4-pro` 切换。未启用、配置错误或接口超时时自动回退规则回复。消息接口支持 `client_message_id` 幂等重试，发送给模型的历史消息先脱敏，模型回复还会经过数字事实 grounding 与合规过滤。
+基础知识库和默认流程由迁移自动写入，也可幂等刷新：`python manage.py seed_talkbot`。TalkBot 文本模型接入 DeepSeek 官方 OpenAI-compatible API：优先读取后台“生成配置(API)”中的谈单机器人配置，未填写后台 Key 时回退服务器 Secret 或 `.env`；默认模型是低延迟的 `deepseek-v4-flash`，可切换为 `deepseek-v4-pro`。未启用、配置错误或接口超时时自动回退规则回复。消息接口支持 `client_message_id` 幂等重试，发送给模型的历史消息先脱敏，模型回复还会经过数字事实 grounding 与合规过滤。
 
 ## 支付与额度
 
@@ -198,8 +198,9 @@ curl -fsS https://<域名>/api/talkbot/health/
 - 生图是同步长请求，超时链必须满足 `nginx 600s > gunicorn 600s > 前端 360s > 后端轮询 300s`。
 - 效果图落在 `MEDIA_ROOT`（compose 中为 `/data/media` 命名卷），`/media/` 经 Django
   做会话和对象级鉴权；nginx 不得匿名直发用户原图、户型图或效果图。
-- TalkBot 的 DeepSeek Key 只从服务器环境变量 `DEEPSEEK_API_KEY` 读取，不写数据库或仓库；
-  生图服务密钥仍在 `/admin/design/generationconfig/` 独立维护。
+- TalkBot 的 DeepSeek 配置可在 `/admin/design/generationconfig/` 的“谈单机器人”区域维护；
+  API Key 以部署密钥派生的密钥加密后入库、后台不回显，未填写后台 Key 时回退服务器环境变量。
+  生图与设计说明配置仍是相互独立的链路。
 
 ## Prompt 控制模块
 

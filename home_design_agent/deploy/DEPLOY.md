@@ -13,7 +13,7 @@ gunicorn 跑 Django，单一入口对外暴露（默认 80 端口）。
    下载必须经过 Django 的登录态与对象归属校验，禁止 nginx 匿名目录直发。
    容器重建不会丢，但**换机器要迁移这个卷**，否则历史效果图全部 404。
 3. **文本和生图密钥分离**：TalkBot 的 DeepSeek Key 只放服务器 `.env` 或 Secret 管理器，
-   生图配置仍在后台 `/admin/design/generationconfig/` 维护。DeepSeek 未启用或暂时不可用时，
+   生图和谈单机器人配置可在后台 `/admin/design/generationconfig/` 分区维护。DeepSeek 未启用或暂时不可用时，
    TalkBot 自动回退规则回复，不影响会话与转化链路。
 
 ## 二、首次部署（5 步）
@@ -58,8 +58,8 @@ curl -fsS https://<域名>/api/talkbot/health/
 | `DJANGO_NUM_PROXIES` | 是 | 当前 TLS 边缘代理 + Compose nginx 为 `2`；链路变化时同步调整 |
 | `SEED_ON_START` | — | 首次 `1`，之后 `0` |
 | `GUNICORN_TIMEOUT` | — | 默认 600，必须 > 前端 360s |
-| `TALKBOT_LLM_ENABLED` | — | 配好 DeepSeek Key 后设为 `true`；缺 Key 时必须保持 `false` |
-| `DEEPSEEK_API_KEY` | 启用文本模型时必填 | DeepSeek 平台生成的 API Key，仅存服务器 Secret |
+| `TALKBOT_LLM_ENABLED` | — | `.env` 回退配置的开关；后台已保存机器人 Key 时由后台开关接管 |
+| `DEEPSEEK_API_KEY` | 使用 `.env` 回退配置时必填 | DeepSeek 平台生成的 API Key；也可改在后台加密保存 |
 | `DEEPSEEK_API_BASE` | — | 默认官方端点 `https://api.deepseek.com` |
 | `DEEPSEEK_MODEL` | — | 默认 `deepseek-v4-flash`，可切换 `deepseek-v4-pro` |
 | `PAYMENT_MODE` | 是 | 生产必须 `live`；`mock` 只用于本地联调 |

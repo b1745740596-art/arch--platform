@@ -1,8 +1,12 @@
+from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils.html import format_html, format_html_join, mark_safe
+
+from config.provider_security import is_safe_https_endpoint
 
 from .models import (
     CustomerRequirement,
@@ -233,10 +237,73 @@ class PromptModuleAdmin(admin.ModelAdmin):
     )
 
 
+class GenerationConfigAdminForm(forms.ModelForm):
+    talkbot_api_key = forms.CharField(
+        label='机器人 API Key',
+        required=False,
+        strip=True,
+        widget=forms.PasswordInput(render_value=False, attrs={'autocomplete': 'new-password'}),
+        help_text='密钥只在保存时接收，页面不会回显；留空会保留已保存的密钥。',
+    )
+    clear_talkbot_api_key = forms.BooleanField(
+        label='清除已保存的机器人 API Key',
+        required=False,
+        help_text='仅在需要删除旧密钥时勾选。',
+    )
+
+    class Meta:
+        model = GenerationConfig
+        exclude = ('talkbot_api_key_encrypted',)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.has_talkbot_api_key:
+            self.fields['talkbot_api_key'].help_text = (
+                '已安全保存密钥。留空会保留原密钥；输入新值会替换，页面不会回显。'
+            )
+
+    def clean_talkbot_api_base(self):
+        value = (self.cleaned_data.get('talkbot_api_base') or '').strip().rstrip('/')
+        if value and not is_safe_https_endpoint(value):
+            raise ValidationError('API Base URL 必须是无账号、查询参数和锚点的 HTTPS 地址。')
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('talkbot_api_key') and cleaned.get('clear_talkbot_api_key'):
+            self.add_error('clear_talkbot_api_key', '输入新密钥和清除密钥不能同时操作。')
+        return cleaned
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.cleaned_data.get('clear_talkbot_api_key'):
+            instance.talkbot_api_key_encrypted = ''
+        elif self.cleaned_data.get('talkbot_api_key'):
+            instance.set_talkbot_api_key(self.cleaned_data['talkbot_api_key'])
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
+
+
 @admin.register(GenerationConfig)
 class GenerationConfigAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'model', 'api_base', 'enabled', 'updated_at')
+    form = GenerationConfigAdminForm
+    list_display = (
+        '__str__', 'model', 'api_base', 'enabled', 'talkbot_model',
+        'talkbot_enabled', 'talkbot_key_configured', 'updated_at',
+    )
     fieldsets = (
+        ('谈单机器人（DeepSeek 文本 API）', {
+            'fields': (
+                'talkbot_enabled', 'talkbot_api_base', 'talkbot_api_key',
+                'clear_talkbot_api_key', 'talkbot_model',
+            ),
+            'description': (
+                '供 App 内 TalkBot 使用，与设计说明和效果图接口相互独立。'
+                '填写 Key 后勾选启用；保存后 Key 不会回显。'
+            ),
+        }),
         ('效果图生成（图像端点）', {
             'fields': ('image_enabled', 'image_provider', 'image_api_base',
                        'image_api_key', 'image_model', 'image_size'),
@@ -253,6 +320,10 @@ class GenerationConfigAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # 单例：已存在则不允许新增
         return not GenerationConfig.objects.exists()
+
+    @admin.display(boolean=True, description='机器人 Key 已配置')
+    def talkbot_key_configured(self, obj):
+        return obj.has_talkbot_api_key
 
 
 @admin.register(HomeReport)

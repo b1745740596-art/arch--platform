@@ -12,10 +12,12 @@ from rest_framework.test import APITestCase
 
 from users.models import UserProfile
 
+from .admin import GenerationConfigAdminForm
 from .serializers import RenderJobSerializer
 from .models import (
     CustomerRequirement,
     DesignScheme,
+    GenerationConfig,
     HomeReport,
     Lead,
     Owner,
@@ -26,6 +28,70 @@ from .models import (
 
 
 User = get_user_model()
+
+
+class GenerationConfigSecretTests(APITestCase):
+    def setUp(self):
+        self.config = GenerationConfig.objects.create(name='default')
+
+    def _form(self, **overrides):
+        data = {
+            'name': 'default',
+            'talkbot_enabled': 'on',
+            'talkbot_api_base': 'https://api.deepseek.com',
+            'talkbot_api_key': '',
+            'talkbot_model': 'deepseek-v4-flash',
+        }
+        data.update(overrides)
+        return GenerationConfigAdminForm(data=data, instance=self.config)
+
+    def test_admin_form_encrypts_key_and_blank_input_preserves_it(self):
+        secret = 'sk-admin-secret-value'
+        form = self._form(talkbot_api_key=secret)
+        self.assertTrue(form.is_valid(), form.errors)
+        config = form.save()
+
+        self.assertNotEqual(config.talkbot_api_key_encrypted, secret)
+        self.assertNotIn(secret, config.talkbot_api_key_encrypted)
+        self.assertEqual(config.get_talkbot_api_key(), secret)
+
+        blank_form = self._form()
+        self.assertTrue(blank_form.is_valid(), blank_form.errors)
+        blank_form.save()
+        self.config.refresh_from_db()
+        self.assertEqual(self.config.get_talkbot_api_key(), secret)
+
+    def test_admin_form_can_explicitly_clear_key(self):
+        self.config.set_talkbot_api_key('sk-delete-me')
+        self.config.save(update_fields=('talkbot_api_key_encrypted',))
+
+        form = self._form(clear_talkbot_api_key='on')
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.config.refresh_from_db()
+        self.assertFalse(self.config.has_talkbot_api_key)
+
+    def test_admin_form_rejects_insecure_api_endpoint(self):
+        form = self._form(talkbot_api_base='http://api.deepseek.com', talkbot_api_key='sk-test')
+        self.assertFalse(form.is_valid())
+        self.assertIn('talkbot_api_base', form.errors)
+
+    def test_admin_change_page_never_renders_stored_key(self):
+        secret = 'sk-never-render-this-value'
+        self.config.set_talkbot_api_key(secret)
+        self.config.save(update_fields=('talkbot_api_key_encrypted',))
+        administrator = User.objects.create_superuser(
+            username='config-admin',
+            password='secret123',
+            email='admin@example.com',
+        )
+        self.client.force_login(administrator)
+
+        response = self.client.get(f'/admin/design/generationconfig/{self.config.pk}/change/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotContains(response, secret)
+        self.assertContains(response, 'name="talkbot_api_key"')
 
 
 class LoginCsrfTests(APITestCase):

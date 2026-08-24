@@ -49,6 +49,7 @@ def health(request):
         'llm_enabled': deepseek.enabled,
         'llm_configured': deepseek.configured,
         'llm_model': deepseek.model,
+        'llm_config_source': deepseek.source,
     }
     llm_ready = not deepseek.enabled or deepseek.configured
     ready = payload['workflow_ready'] and payload['knowledge_ready'] and cache_ready and llm_ready

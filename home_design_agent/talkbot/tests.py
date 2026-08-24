@@ -7,7 +7,16 @@ from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
-from design.models import DesignScheme, HomeOrder, HomeReport, Lead, OrderDetail, Owner, Project
+from design.models import (
+    DesignScheme,
+    GenerationConfig,
+    HomeOrder,
+    HomeReport,
+    Lead,
+    OrderDetail,
+    Owner,
+    Project,
+)
 from users.models import UserProfile
 
 from .models import Conversation, CustomerProfile, KnowledgeDocument, Message, TalkStep
@@ -518,6 +527,36 @@ class DeepSeekLLMTests(APITestCase):
         result = generate_reply(self.conversation, self.profile, {}, [])
         self.assertEqual(result.status, 'disabled')
         self.assertIsNone(result.content)
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    def test_encrypted_admin_configuration_overrides_environment(self):
+        stored = GenerationConfig.objects.create(
+            name='default',
+            talkbot_enabled=True,
+            talkbot_api_base='https://api.deepseek.com',
+            talkbot_model='deepseek-v4-pro',
+        )
+        stored.set_talkbot_api_key('sk-admin-deepseek-key')
+        stored.save(update_fields=('talkbot_api_key_encrypted',))
+
+        config = load_deepseek_config()
+
+        self.assertTrue(config.enabled)
+        self.assertTrue(config.configured)
+        self.assertEqual(config.api_key, 'sk-admin-deepseek-key')
+        self.assertEqual(config.model, 'deepseek-v4-pro')
+        self.assertEqual(config.source, 'admin')
+
+    @override_settings(TALKBOT_LLM_ENABLED=True, DEEPSEEK_API_KEY='sk-env-key')
+    def test_disabled_admin_configuration_can_turn_off_environment_model(self):
+        stored = GenerationConfig.objects.create(name='default', talkbot_enabled=False)
+        stored.set_talkbot_api_key('sk-admin-deepseek-key')
+        stored.save(update_fields=('talkbot_api_key_encrypted',))
+
+        config = load_deepseek_config()
+
+        self.assertFalse(config.enabled)
+        self.assertEqual(config.source, 'admin')
 
     @override_settings(TALKBOT_LLM_ENABLED=True, DEEPSEEK_API_KEY='')
     def test_enabled_model_without_api_key_is_misconfigured(self):
