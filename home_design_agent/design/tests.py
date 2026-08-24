@@ -1,3 +1,327 @@
-from django.test import TestCase
+"""Design-domain API security regression tests."""
 
-# Create your tests here.
+import json
+
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.http import HttpRequest
+from django.middleware.csrf import get_token
+from django.test import Client
+from rest_framework import serializers as drf_serializers, status
+from rest_framework.test import APITestCase
+
+from users.models import UserProfile
+
+from .serializers import RenderJobSerializer
+from .models import (
+    CustomerRequirement,
+    DesignScheme,
+    HomeReport,
+    Lead,
+    Owner,
+    Project,
+    RenderJob,
+    ServiceProvider,
+)
+
+
+User = get_user_model()
+
+
+class LoginCsrfTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='csrf-user', password='secret123')
+        self.client = Client(enforce_csrf_checks=True)
+
+    def test_session_login_requires_csrf_and_accepts_valid_token(self):
+        payload = json.dumps({'username': 'csrf-user', 'password': 'secret123'})
+        rejected = self.client.post(
+            '/api/design/auth/login/',
+            payload,
+            content_type='application/json',
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('sessionid', rejected.cookies)
+
+        csrf_request = HttpRequest()
+        csrf_token = get_token(csrf_request)
+        self.client.cookies['csrftoken'] = csrf_request.META['CSRF_COOKIE']
+        accepted = self.client.post(
+            '/api/design/auth/login/',
+            payload,
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_200_OK)
+        self.assertIn('sessionid', accepted.cookies)
+
+
+class DesignOwnershipIsolationTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.alice = User.objects.create_user(username='alice-design', password='secret123')
+        self.bob = User.objects.create_user(username='bob-design', password='secret123')
+        UserProfile.objects.create(user=self.alice, display_name='Alice', phone='13800000001')
+        UserProfile.objects.create(user=self.bob, display_name='Bob', phone='13800000002')
+        self.alice_owner = Owner.objects.create(name='Alice', phone='13800000001', city='上海')
+        self.bob_owner = Owner.objects.create(name='Bob', phone='13800000002', city='苏州')
+        self.alice_project = Project.objects.create(
+            user=self.alice, owner=self.alice_owner, title='Alice Home', city='上海',
+        )
+        self.bob_project = Project.objects.create(
+            user=self.bob, owner=self.bob_owner, title='Bob Home', city='苏州',
+        )
+        self.alice_scheme = DesignScheme.objects.create(
+            project=self.alice_project, name='Alice Scheme', style='原木',
+        )
+        self.bob_scheme = DesignScheme.objects.create(
+            project=self.bob_project, name='Bob Scheme', style='现代',
+        )
+        self.alice_lead = Lead.objects.create(
+            project=self.alice_project, contact_name='Alice', contact_phone='13800000001',
+        )
+        self.bob_lead = Lead.objects.create(
+            project=self.bob_project, contact_name='Bob', contact_phone='13800000002',
+        )
+        self.alice_requirement = CustomerRequirement.objects.create(
+            user=self.alice, name='Alice', phone='13800000001',
+        )
+        self.bob_requirement = CustomerRequirement.objects.create(
+            user=self.bob, name='Bob', phone='13800000002',
+        )
+        self.alice_render = RenderJob.objects.create(
+            project=self.alice_project, raw_photo='raw_photos/alice.jpg',
+        )
+        self.bob_render = RenderJob.objects.create(
+            project=self.bob_project, raw_photo='raw_photos/bob.jpg',
+        )
+        self.alice_report = HomeReport.objects.create(
+            user=self.alice, project=self.alice_project, title='Alice Report',
+        )
+        self.bob_report = HomeReport.objects.create(
+            user=self.bob, project=self.bob_project, title='Bob Report',
+        )
+        self.client.force_authenticate(self.alice)
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
+
+    def _ids(self, response):
+        payload = response.data['results'] if isinstance(response.data, dict) else response.data
+        return {item['id'] for item in payload}
+
+    def test_owner_pii_is_scoped_and_api_is_read_only(self):
+        response = self.client.get('/api/design/owners/')
+        self.assertEqual(self._ids(response), {self.alice_owner.id})
+        self.assertEqual(
+            self.client.get(f'/api/design/owners/{self.bob_owner.id}/').status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        self.assertEqual(
+            self.client.patch(
+                f'/api/design/owners/{self.alice_owner.id}/', {'phone': '13900000000'}, format='json',
+            ).status_code,
+            status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def test_leads_schemes_requirements_and_renders_are_user_scoped(self):
+        cases = (
+            ('leads', self.alice_lead.id, self.bob_lead.id),
+            ('schemes', self.alice_scheme.id, self.bob_scheme.id),
+            ('requirements', self.alice_requirement.id, self.bob_requirement.id),
+            ('renders', self.alice_render.id, self.bob_render.id),
+        )
+        for endpoint, own_id, other_id in cases:
+            response = self.client.get(f'/api/design/{endpoint}/')
+            self.assertIn(own_id, self._ids(response), endpoint)
+            self.assertNotIn(other_id, self._ids(response), endpoint)
+            self.assertEqual(
+                self.client.get(f'/api/design/{endpoint}/{other_id}/').status_code,
+                status.HTTP_404_NOT_FOUND,
+                endpoint,
+            )
+
+    def test_cannot_create_lead_for_another_users_project(self):
+        response = self.client.post(
+            '/api/design/leads/',
+            {'project': self.bob_project.id, 'contact_name': 'Alice', 'contact_phone': '13800000001'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_lead_rejects_cross_project_scheme_and_unverified_contact(self):
+        no_consent = self.client.post(
+            '/api/design/leads/',
+            {
+                'project': self.alice_project.id,
+                'contact_name': 'Alice',
+                'contact_phone': '13800000001',
+            },
+            format='json',
+        )
+        self.assertEqual(no_consent.status_code, status.HTTP_400_BAD_REQUEST)
+
+        other_phone = self.client.post(
+            '/api/design/leads/',
+            {
+                'project': self.alice_project.id,
+                'contact_name': 'Alice',
+                'contact_phone': '13800000002',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(other_phone.status_code, status.HTTP_400_BAD_REQUEST)
+
+        cross_scheme = self.client.post(
+            '/api/design/leads/',
+            {
+                'project': self.alice_project.id,
+                'scheme': self.bob_scheme.id,
+                'contact_name': 'Alice',
+                'contact_phone': '13800000001',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(cross_scheme.status_code, status.HTTP_400_BAD_REQUEST)
+
+        accepted = self.client.post(
+            '/api/design/leads/',
+            {
+                'project': self.alice_project.id,
+                'scheme': self.alice_scheme.id,
+                'contact_name': 'Alice',
+                'contact_phone': '13800000001',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_201_CREATED, accepted.data)
+        self.assertEqual(accepted.data['contact_phone'], '13800000001')
+
+    def test_project_cannot_be_transferred_or_linked_to_foreign_owner(self):
+        transfer = self.client.patch(
+            f'/api/design/projects/{self.alice_project.id}/',
+            {'user': self.bob.id, 'title': 'Still Alice'},
+            format='json',
+        )
+        self.assertEqual(transfer.status_code, status.HTTP_200_OK)
+        self.alice_project.refresh_from_db()
+        self.assertEqual(self.alice_project.user_id, self.alice.id)
+
+        foreign_owner = self.client.patch(
+            f'/api/design/projects/{self.alice_project.id}/',
+            {'owner': self.bob_owner.id},
+            format='json',
+        )
+        self.assertEqual(foreign_owner.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_report_and_order_cannot_reference_foreign_data(self):
+        move_report = self.client.patch(
+            f'/api/design/reports/{self.alice_report.id}/',
+            {'project': self.bob_project.id},
+            format='json',
+        )
+        self.assertEqual(move_report.status_code, status.HTTP_403_FORBIDDEN)
+
+        cross_order = self.client.post(
+            '/api/design/orders/',
+            {'project': self.alice_project.id, 'report': self.bob_report.id, 'title': 'Cross order'},
+            format='json',
+        )
+        self.assertEqual(cross_order.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_order_requires_consent_and_account_verified_phone(self):
+        no_consent = self.client.post(
+            '/api/design/orders/',
+            {
+                'project': self.alice_project.id,
+                'title': 'Alice order',
+                'customer_phone': '13800000001',
+            },
+            format='json',
+        )
+        self.assertEqual(no_consent.status_code, status.HTTP_400_BAD_REQUEST)
+
+        other_phone = self.client.post(
+            '/api/design/orders/',
+            {
+                'project': self.alice_project.id,
+                'title': 'Alice order',
+                'customer_phone': '13800000002',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(other_phone.status_code, status.HTTP_400_BAD_REQUEST)
+
+        accepted = self.client.post(
+            '/api/design/orders/',
+            {
+                'project': self.alice_project.id,
+                'title': 'Alice order',
+                'customer_phone': '13800000001',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_201_CREATED, accepted.data)
+        self.assertEqual(accepted.data['customer_phone'], '13800000001')
+
+    def test_provider_catalog_is_read_only(self):
+        response = self.client.post(
+            '/api/design/providers/',
+            {'name': 'Injected provider', 'kind': ServiceProvider.Kind.DESIGN},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_requirement_chain_is_owned_and_visible_to_submitter(self):
+        response = self.client.post(
+            '/api/design/requirements/',
+            {
+                'name': 'Alice',
+                'phone': '13800000001',
+                'city': '上海',
+                'room_type': '客厅',
+                'style': '原木',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        requirement = CustomerRequirement.objects.get(pk=response.data['id'])
+        project = Project.objects.get(requirement_summary__room_type='客厅')
+        self.assertEqual(requirement.user, self.alice)
+        self.assertEqual(project.user, self.alice)
+        self.assertEqual(project.leads.get().contact_phone, '13800000001')
+        self.assertIn(project.id, self._ids(self.client.get('/api/design/projects/')))
+
+    def test_requirement_cannot_mutate_owner_using_another_users_phone(self):
+        response = self.client.post(
+            '/api/design/requirements/',
+            {
+                'name': 'Injected name',
+                'phone': '13800000002',
+                'city': '北京',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.bob_owner.refresh_from_db()
+        self.assertEqual(self.bob_owner.name, 'Bob')
+        self.assertEqual(self.bob_owner.city, '苏州')
+        self.assertFalse(CustomerRequirement.objects.filter(name='Injected name').exists())
+
+    def test_render_requirement_rejects_direct_identifiers_before_model_use(self):
+        serializer = RenderJobSerializer()
+        cases = (
+            '联系人：张三，上海市浦东新区世纪大道100号1栋2单元',
+            '身份证 310101 19900101 123X',
+            '电话 010 12345678',
+        )
+        for value in cases:
+            with self.subTest(value=value), self.assertRaises(drf_serializers.ValidationError) as caught:
+                serializer.validate_requirement(value)
+            self.assertIn('个人信息', str(caught.exception))

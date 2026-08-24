@@ -342,6 +342,7 @@ async function packageRecords() {
     })
 
     await api.createOrder({
+      consent: true,
       project: pid,
       report: report.id,
       title: payload.title,

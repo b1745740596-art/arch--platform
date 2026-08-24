@@ -53,12 +53,14 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'design',
+    'talkbot',
     'users',
     'payments',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'config.middleware.BrowserSecurityHeadersMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -168,10 +170,6 @@ MEDIA_URL = '/media/'
 # 生产用挂载卷，例如 DJANGO_MEDIA_ROOT=/data/media，避免容器重建丢失效果图
 MEDIA_ROOT = Path(env('DJANGO_MEDIA_ROOT', default=str(BASE_DIR / 'media')))
 
-# 效果图存在 MEDIA_ROOT，DEBUG=False 后 Django 默认不再托管 /media/。
-# 有 nginx 时保持 False（由 nginx 直接发文件）；单容器直跑时设为 True 由 Django 兜底托管。
-SERVE_MEDIA_FILES = env.bool('DJANGO_SERVE_MEDIA', default=False)
-
 # 上传毛坯照片上限 10MB，留出 multipart 余量
 DATA_UPLOAD_MAX_MEMORY_SIZE = env.int('DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE', default=26214400)
 
@@ -185,9 +183,49 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = env.bool('DJANGO_SECURE_COOKIES', default=False)
     CSRF_COOKIE_SECURE = env.bool('DJANGO_SECURE_COOKIES', default=False)
     SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = env.int('DJANGO_SECURE_HSTS_SECONDS', default=86400)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool(
+        'DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', default=True,
+    )
+    SECURE_HSTS_PRELOAD = env.bool('DJANGO_SECURE_HSTS_PRELOAD', default=False)
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
     X_FRAME_OPTIONS = 'SAMEORIGIN'
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+# SimpleUI removes Django's stock clickjacking middleware at app startup; the
+# custom security-header middleware plus nginx are covered by config tests.
+# HSTS preload remains deliberately off during the short max-age rollout.
+SILENCED_SYSTEM_CHECKS = ['security.W002', 'security.W021']
+
+# DRF cost controls must be shared by all Gunicorn workers. Bare-process installs
+# fall back to a high-capacity file cache; production Compose explicitly injects
+# the Redis backend and location below.
+CACHE_BACKEND = env(
+    'DJANGO_CACHE_BACKEND',
+    default=(
+        'django.core.cache.backends.locmem.LocMemCache'
+        if DEBUG else 'django.core.cache.backends.filebased.FileBasedCache'
+    ),
+)
+CACHE_LOCATION = env(
+    'DJANGO_CACHE_LOCATION',
+    default=('arch-ai-local-cache' if DEBUG else '/tmp/arch-ai-cache'),
+)
+CACHE_OPTIONS = {}
+if CACHE_BACKEND.endswith(('FileBasedCache', 'LocMemCache')):
+    CACHE_OPTIONS = {
+        'MAX_ENTRIES': env.int('DJANGO_CACHE_MAX_ENTRIES', default=50000),
+        'CULL_FREQUENCY': env.int('DJANGO_CACHE_CULL_FREQUENCY', default=10),
+    }
+CACHES = {
+    'default': {
+        'BACKEND': CACHE_BACKEND,
+        'LOCATION': CACHE_LOCATION,
+        'TIMEOUT': 60 * 60 * 24,
+        'OPTIONS': CACHE_OPTIONS,
+    },
+}
 
 # 户型图上传限制（PRD 5.1）
 FLOORPLAN_MAX_UPLOAD_MB = 20
@@ -196,10 +234,34 @@ FLOORPLAN_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf']
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Production has two trusted hops: the TLS/CDN edge and the Compose nginx.
+    # The origin port must only accept traffic from that edge (see deploy SOP).
+    'NUM_PROXIES': env.int('DJANGO_NUM_PROXIES', default=2),
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth_register_ip': env('AUTH_REGISTER_IP_RATE', default='10/day'),
+        'auth_login_ip': env('AUTH_LOGIN_IP_RATE', default='60/hour'),
+        'auth_login_target': env('AUTH_LOGIN_TARGET_RATE', default='10/hour'),
+        'auth_verification_ip': env('AUTH_VERIFICATION_IP_RATE', default='30/hour'),
+        'auth_verification_target': env('AUTH_VERIFICATION_TARGET_RATE', default='5/hour'),
+        'auth_password_reset_ip': env('AUTH_PASSWORD_RESET_IP_RATE', default='10/hour'),
+        'auth_password_reset_target': env('AUTH_PASSWORD_RESET_TARGET_RATE', default='5/hour'),
+        'design_render_user': env('DESIGN_RENDER_USER_RATE', default='12/hour'),
+        'design_render_ip': env('DESIGN_RENDER_IP_RATE', default='30/hour'),
+        'design_sales_user': env('DESIGN_SALES_USER_RATE', default='10/day'),
+        'design_sales_ip': env('DESIGN_SALES_IP_RATE', default='30/day'),
+        'talkbot_session': env('TALKBOT_SESSION_RATE', default='10/day'),
+        'talkbot_message': env('TALKBOT_MESSAGE_RATE', default='30/hour'),
+        'talkbot_convert': env('TALKBOT_CONVERT_RATE', default='10/day'),
+        'talkbot_ip': env('TALKBOT_IP_RATE', default='120/hour'),
+    },
 }
+
+# TalkBot ships in deterministic rule mode. Enable the external text model only
+# after the production knowledge base and provider configuration are verified.
+TALKBOT_LLM_ENABLED = env.bool('TALKBOT_LLM_ENABLED', default=False)
 
 # ---- 用户系统 ----
 # 开发默认打印到控制台；生产在 .env 配置 SMTP（见 .env.example）。
@@ -265,6 +327,7 @@ PAYMENT_WECHAT_NOTIFY_URL = env('PAYMENT_WECHAT_NOTIFY_URL', default='')
 PAYMENT_ALIPAY_APP_ID = env('PAYMENT_ALIPAY_APP_ID', default='')
 PAYMENT_ALIPAY_PRIVATE_KEY = env('PAYMENT_ALIPAY_PRIVATE_KEY', default='')
 PAYMENT_ALIPAY_PUBLIC_KEY = env('PAYMENT_ALIPAY_PUBLIC_KEY', default='')
+PAYMENT_ALIPAY_SELLER_ID = env('PAYMENT_ALIPAY_SELLER_ID', default='')
 PAYMENT_ALIPAY_NOTIFY_URL = env('PAYMENT_ALIPAY_NOTIFY_URL', default='')
 
 # 可浏览 API 页面只在开发环境暴露

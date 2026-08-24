@@ -61,8 +61,8 @@ git push origin main
 ### 4. 验证 Web 已上线
 
 ```bash
-# 健康检查
-curl -fsS https://plankeai-home.com/api/design/health/
+# 就绪检查（数据库、Redis、TalkBot 流程与知识库）
+curl -fsS https://plankeai-home.com/api/talkbot/health/
 
 # 确认首页资源已更新（asset 名应变化）
 curl -sS https://plankeai-home.com/ | grep -o 'index-[^"]*\.js' | head -1
@@ -103,7 +103,29 @@ git commit -m "chore: bump app version to <version>"
 git push origin main
 ```
 
-### 3. 触发 APK 构建
+### 3. 配置 Android 签名 Secrets（首次或密钥变更时）
+
+APK 工作流不读取仓库内的签名文件和口令。请在 GitHub 仓库
+`Settings → Secrets and variables → Actions` 配置以下 Repository secrets：
+
+| Secret | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | P12/JKS 密钥库文件的单行 Base64 |
+| `ANDROID_KEY_ALIAS` | 密钥别名 |
+| `ANDROID_KEYSTORE_PASSWORD` | 密钥库口令 |
+| `ANDROID_KEY_PASSWORD` | 私钥条目的口令 |
+
+仓库历史中曾出现过旧密钥库，该密钥必须按已泄露处理，**不得直接上传为 Secret 继续使用**。
+先在 Play App Signing 执行上传密钥重置/签名密钥升级，再把新密钥编码后直接送入剪贴板：
+
+```bash
+base64 -i home_design_agent/frontend/resources/keystore.p12 | tr -d '\n' | pbcopy
+```
+
+将剪贴板内容保存为 `ANDROID_KEYSTORE_BASE64`。密钥库文件不得提交到 Git；
+任一签名 Secret 缺失时，`Build APK` 会明确失败并停止发布。
+
+### 4. 触发 APK 构建
 
 方式 A：GitHub 网页
 
@@ -118,7 +140,7 @@ gh run watch
 
 构建完成后会发布到 GitHub Release 的 `apk` tag。
 
-### 4. 下载 APK
+### 5. 下载 APK
 
 ```bash
 rm -rf /tmp/apk-build && mkdir -p /tmp/apk-build
@@ -126,10 +148,10 @@ gh release download apk --pattern '*.apk' --dir /tmp/apk-build
 
 # 或用 curl
 curl -L --fail -o /tmp/arch-ai.apk \
-  https://github.com/b1745740596-art/arch--platform/releases/download/apk/app-debug.apk
+  https://github.com/b1745740596-art/arch--platform/releases/download/apk/app-release.apk
 ```
 
-### 5. 上传 APK 到服务器
+### 6. 上传 APK 到服务器
 
 ```bash
 SSH_HOST=<服务器IP或域名>
@@ -142,7 +164,7 @@ ssh -i "$SSH_KEY" "$SSH_USER@$SSH_HOST" \
   "docker run --rm -v home_design_agent_media:/data -v /tmp:/src alpine sh -c 'mkdir -p /data/app && cp /src/arch-ai.apk /data/app/arch-ai.apk'"
 ```
 
-### 6. 验证 APK
+### 7. 验证 APK
 
 ```bash
 curl -fsSI https://plankeai-home.com/media/app/arch-ai.apk | head
@@ -155,7 +177,7 @@ curl -sS https://plankeai-home.com/api/design/app-version/ | python3 -m json.too
 ## 五、上线验证清单
 
 - [ ] Web 首页能打开
-- [ ] `/api/design/health/` 返回 `ok`
+- [ ] `/api/talkbot/health/` 返回 `ok`，且 `ready=true`
 - [ ] App 端打开直接进入「我的家」
 - [ ] App 底部导航与页面跳转正常
 - [ ] 新 APK 下载、安装正常
@@ -174,7 +196,7 @@ git push origin main
 
 ### APK 回滚
 
-把上一版 `app-debug.apk` 重新上传覆盖：
+把上一版已签名的 release APK 重新上传覆盖：
 
 ```bash
 scp -i ~/.ssh/arch_deploy_ed25519 /tmp/old-arch-ai.apk root@47.242.59.208:/tmp/arch-ai.apk
@@ -193,3 +215,4 @@ ssh -i ~/.ssh/arch_deploy_ed25519 root@47.242.59.208 \
 4. 本地没有 Java/Android SDK，请优先用 GitHub Actions 打 APK，不要本机 `gradlew`。
 5. 前端构建使用仓库内置 Node，路径必须包含：
    `"/Users/didi/Architecture Agent Platform/.toolchain/node/bin"`。
+6. `Build APK` 的四个 Android 签名 Secrets 缺一不可；不得把密钥库或口令写回 workflow。

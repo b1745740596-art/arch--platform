@@ -8,7 +8,6 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppUpdateStore } from '@/stores/appUpdate'
 import { appDefaultRoute, isNativeApp } from '@/utils/app'
 import AppSettingsDialog from '@/components/AppSettingsDialog.vue'
-import AppChatDialog from '@/components/AppChatDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,7 +15,6 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const appUpdate = useAppUpdateStore()
 const settingsVisible = ref(false)
-const chatVisible = ref(false)
 const splashVisible = ref(true)
 let autoUpdatePromptShown = false
 
@@ -30,6 +28,7 @@ const navItems = computed(() => {
     items.push({ path: '/', key: 'nav.home', icon: 'HomeFilled' })
   }
   items.push({ path: '/my-home', key: 'nav.myHome', icon: 'House' })
+  items.push({ path: '/talk', key: 'nav.talkbot', icon: 'ChatDotRound' })
   items.push({ path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' })
   items.push({ path: '/intake', key: 'nav.intake', icon: 'UploadFilled' })
   if (auth.user) {
@@ -228,15 +227,14 @@ watch(
           <el-icon><ShoppingCart /></el-icon>
           <span>{{ t('myHome.tabOrders') }}</span>
         </router-link>
-        <button
-          type="button"
+        <router-link
           class="tabbar-item"
-          :class="{ active: chatVisible }"
-          @click="chatVisible = true"
+          :class="{ active: route.path === '/talk' }"
+          to="/talk"
         >
           <el-icon><ChatDotRound /></el-icon>
-          <span>{{ t('nav.chat') }}</span>
-        </button>
+          <span>{{ t('nav.talkbot') }}</span>
+        </router-link>
         <button
           type="button"
           class="tabbar-item"
@@ -259,7 +257,6 @@ watch(
       </footer>
 
       <AppSettingsDialog v-model="settingsVisible" />
-      <AppChatDialog v-model="chatVisible" />
     </div>
   </el-config-provider>
 </template>

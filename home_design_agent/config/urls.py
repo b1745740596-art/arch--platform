@@ -14,13 +14,12 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path, re_path
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.generic import TemplateView
-from django.views.static import serve as static_serve
+
+from .media import private_media, public_app_download
 
 # SPA 入口：直接渲染 Vue 构建产物 frontend_dist/index.html
 # ensure_csrf_cookie：确保加载 SPA 时下发 csrftoken cookie，
@@ -36,24 +35,15 @@ urlpatterns = [
     path('admin/payments/', spa_view),
     path('admin/', admin.site.urls),
     path('api/design/', include('design.urls')),
+    path('api/talkbot/', include('talkbot.urls')),
     path('api/users/', include('users.urls')),
     path('api/payments/', include('payments.urls')),
+    # 仅 APK 固定文件允许匿名下载；不得放宽为 app/ 目录服务。
+    path('media/app/arch-ai.apk', public_app_download, name='app-download'),
+    # 用户上传与生成文件始终经 Django 做会话和对象级鉴权。
+    re_path(r'^media/(?P<path>.+)$', private_media, name='private-media'),
     # 前端首页
     path('', spa_view, name='spa'),
     # 客户端路由回落：非 admin/api/static/media 的路径都交给 Vue Router
     re_path(r'^(?!admin/|api/|static/|media/).*$', spa_view),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-elif settings.SERVE_MEDIA_FILES:
-    # 生成的效果图存在 MEDIA_ROOT。没有 nginx 兜底时（单容器直跑），
-    # 由 Django 托管 /media/，否则 DEBUG=False 下前端拿到的图片链接会 404。
-    # 注意 django.conf.urls.static.static() 在 DEBUG=False 时返回空列表，这里直接挂 serve。
-    urlpatterns += [
-        re_path(
-            r'^media/(?P<path>.*)$',
-            static_serve,
-            {'document_root': settings.MEDIA_ROOT},
-        ),
-    ]

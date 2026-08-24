@@ -81,6 +81,7 @@ async function submitLead() {
       scheme: lead.scheme,
       contact_name: lead.contact_name,
       contact_phone: lead.contact_phone,
+      consent: true,
       city: project.value.city,
       community: project.value.community,
       remark: lead.remark,

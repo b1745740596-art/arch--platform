@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from .models import EmailVerificationCode, SmsVerificationCode, UserProfile
@@ -74,8 +75,9 @@ class ChangePasswordSerializer(serializers.Serializer):
 
         request = self.context['request']
         user = request.user
-        user.set_password(self.validated_data['new_password'])
-        user.save(update_fields=['password'])
+        with transaction.atomic():
+            user.set_password(self.validated_data['new_password'])
+            user.save(update_fields=['password'])
         update_session_auth_hash(request, user)
         return user
 
@@ -105,8 +107,9 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def save(self):
         user = self.validated_data['user']
-        user.set_password(self.validated_data['new_password'])
-        user.save(update_fields=['password'])
+        with transaction.atomic():
+            user.set_password(self.validated_data['new_password'])
+            user.save(update_fields=['password'])
         return user
 
 
@@ -132,6 +135,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'date_joined', 'last_login')
 
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        if not request or not request.user.is_superuser:
+            # Login identities, group membership, credentials, and privilege
+            # flags are a superuser-only control plane even with change_user.
+            fields.pop('password', None)
+            for name in ('username', 'email', 'phone', 'roles', 'is_staff', 'is_superuser'):
+                fields[name].read_only = True
+        return fields
+
     def validate_username(self, value):
         value = (value or '').strip()
         if not value:
@@ -150,6 +164,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
             qs = qs.exclude(pk=self.instance.pk)
         if value and qs.exists():
             raise serializers.ValidationError('邮箱已被占用。')
+        return value
+
+    def validate_phone(self, value):
+        value = normalize_phone(value)
+        if value and not is_valid_phone(value):
+            raise serializers.ValidationError('请输入正确的手机号。')
         return value
 
     def _extract_profile_data(self, validated_data):
@@ -192,11 +212,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
         profile_data = self._extract_profile_data(validated_data)
         roles = validated_data.pop('roles', None)
         password = validated_data.pop('password', None)
+        previous_email = instance.email
         for key, value in validated_data.items():
             setattr(instance, key, value)
         if password:
             instance.set_password(password)
         instance.save()
+        if 'email' in validated_data and instance.email != previous_email:
+            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            profile.email_verified = False
+            profile.verified_email = ''
+            profile.save(update_fields=['email_verified', 'verified_email', 'updated_at'])
         if roles is not None:
             instance.groups.set(roles)
         self._sync_profile(instance, profile_data)
@@ -248,9 +274,13 @@ class PhoneBindSerializer(serializers.Serializer):
 
     def save(self):
         user = self.context['request'].user
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.phone = self.validated_data['phone']
-        profile.save(update_fields=['phone', 'updated_at'])
+        try:
+            with transaction.atomic():
+                profile, _ = UserProfile.objects.select_for_update().get_or_create(user=user)
+                profile.phone = self.validated_data['phone']
+                profile.save(update_fields=['phone', 'updated_at'])
+        except IntegrityError as exc:
+            raise serializers.ValidationError({'phone': '该手机号已被其他账号绑定。'}) from exc
         return profile
 
 
@@ -338,7 +368,9 @@ class EmailBindSerializer(serializers.Serializer):
     def validate(self, attrs):
         user = self.context['request'].user
         email = attrs['email']
-        if User.objects.exclude(pk=user.pk).filter(email=email, is_active=True).exists():
+        if UserProfile.objects.exclude(user=user).filter(
+            verified_email=email, user__is_active=True,
+        ).exists():
             raise serializers.ValidationError({'email': '该邮箱已被其他账号绑定。'})
 
         record, error = verify_email_code(
@@ -352,12 +384,17 @@ class EmailBindSerializer(serializers.Serializer):
 
     def save(self):
         user = self.context['request'].user
-        user.email = self.validated_data['email']
-        user.save(update_fields=['email'])
-
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-        profile.email_verified = True
-        profile.save(update_fields=['email_verified', 'updated_at'])
+        email = self.validated_data['email']
+        try:
+            with transaction.atomic():
+                profile, _ = UserProfile.objects.select_for_update().get_or_create(user=user)
+                profile.email_verified = True
+                profile.verified_email = email
+                profile.save(update_fields=['email_verified', 'verified_email', 'updated_at'])
+                user.email = email
+                user.save(update_fields=['email'])
+        except IntegrityError as exc:
+            raise serializers.ValidationError({'email': '该邮箱已被其他账号绑定。'}) from exc
         return profile
 
 
@@ -380,7 +417,16 @@ class EmailLoginSerializer(serializers.Serializer):
         if record is None:
             raise serializers.ValidationError({'code': error})
 
-        user = User.objects.filter(email=email).first()
+        verified = UserProfile.objects.filter(
+            verified_email=email,
+        ).select_related('user').first()
+        user = verified.user if verified is not None else None
+        if user is None:
+            candidates = list(User.objects.filter(email=email).order_by('id')[:2])
+            if len(candidates) == 1:
+                user = candidates[0]
+            elif len(candidates) > 1:
+                raise serializers.ValidationError({'email': '该邮箱关联多个旧账号，请联系客服处理。'})
         if user is not None and not user.is_active:
             raise serializers.ValidationError({'email': '该账号已停用，请联系管理员。'})
         attrs['user'] = user
@@ -390,15 +436,29 @@ class EmailLoginSerializer(serializers.Serializer):
         user = self.validated_data.get('user')
         if user is not None:
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            if not profile.email_verified:
+            if not profile.email_verified or profile.verified_email != self.validated_data['email']:
                 profile.email_verified = True
-                profile.save(update_fields=['email_verified', 'updated_at'])
+                profile.verified_email = self.validated_data['email']
+                try:
+                    profile.save(update_fields=['email_verified', 'verified_email', 'updated_at'])
+                except IntegrityError as exc:
+                    raise serializers.ValidationError(
+                        {'email': '该邮箱已被其他账号绑定。'}
+                    ) from exc
             return user
 
         email = self.validated_data['email']
         username = _generate_username_for_email(email)
         user = User.objects.create_user(username=username, email=email)
-        UserProfile.objects.create(user=user, email_verified=True)
+        try:
+            UserProfile.objects.create(
+                user=user,
+                email_verified=True,
+                verified_email=email,
+            )
+        except IntegrityError as exc:
+            user.delete()
+            raise serializers.ValidationError({'email': '该邮箱已被其他账号绑定。'}) from exc
         return user
 
 

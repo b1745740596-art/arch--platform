@@ -306,7 +306,9 @@ def _shrink_reference(data: bytes, max_side: int = REFERENCE_MAX_SIDE) -> tuple[
 
         from PIL import Image
 
-        with Image.open(io.BytesIO(data)) as img:
+        with Image.open(
+            io.BytesIO(data), formats=('JPEG', 'PNG', 'WEBP', 'HEIF'),
+        ) as img:
             out = img.convert('RGB')
             if max(out.size) > max_side:
                 scale = max_side / max(out.size)

@@ -45,11 +45,16 @@ if [ "${SEED_ON_START:-0}" = "1" ]; then
   echo "[entrypoint] seeding baseline data ..."
   python manage.py seed_prompt_modules --update || true
   python manage.py seed_workflows || true
+  python manage.py seed_talkbot || true
   python manage.py seed_demo || true
 fi
 
 # 可选：用环境变量自动创建管理员，避免手工 exec 进容器
 if [ -n "${DJANGO_SUPERUSER_USERNAME:-}" ] && [ -n "${DJANGO_SUPERUSER_PASSWORD:-}" ]; then
+  if [ "${#DJANGO_SUPERUSER_PASSWORD}" -lt 16 ] || [[ "$DJANGO_SUPERUSER_PASSWORD" == change-me* ]]; then
+    echo "[entrypoint] refusing weak/placeholder DJANGO_SUPERUSER_PASSWORD" >&2
+    exit 1
+  fi
   echo "[entrypoint] ensuring superuser ${DJANGO_SUPERUSER_USERNAME} ..."
   python manage.py createsuperuser --noinput || true
 fi

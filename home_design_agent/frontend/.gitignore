@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Android signing credentials must come from GitHub Secrets.
+*.p12
+*.jks
+*.keystore
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

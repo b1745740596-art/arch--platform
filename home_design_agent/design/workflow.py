@@ -92,7 +92,7 @@ class WorkflowContext:
 def _open_image(data: bytes):
     from PIL import Image
 
-    return Image.open(io.BytesIO(data))
+    return Image.open(io.BytesIO(data), formats=('JPEG', 'PNG', 'WEBP', 'HEIF'))
 
 
 def _dump_image(img, fmt: str = 'PNG', quality: int = 92) -> bytes:

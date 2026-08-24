@@ -34,6 +34,7 @@ COPY manage.py ./
 COPY app_release.json ./
 COPY config/ ./config/
 COPY design/ ./design/
+COPY talkbot/ ./talkbot/
 COPY users/ ./users/
 COPY payments/ ./payments/
 COPY deploy/ ./deploy/
@@ -55,6 +56,8 @@ USER appuser
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/api/design/health/ || exit 1
+    CMD health_host="${DJANGO_HEALTHCHECK_HOST:-${DJANGO_ALLOWED_HOSTS%%,*}}"; \
+        curl -fsS -H "Host: ${health_host:-localhost}" -H "X-Forwarded-Proto: https" \
+        http://127.0.0.1:8000/api/talkbot/health/ || exit 1
 
 ENTRYPOINT ["./deploy/entrypoint.sh"]

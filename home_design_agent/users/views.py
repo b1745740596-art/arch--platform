@@ -6,6 +6,16 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.csrf import enforce_login_csrf
+from config.throttles import (
+    AuthLoginIPThrottle,
+    AuthLoginTargetThrottle,
+    PasswordResetIPThrottle,
+    PasswordResetTargetThrottle,
+    VerificationIPThrottle,
+    VerificationTargetThrottle,
+)
+
 from .models import EmailVerificationCode, SmsVerificationCode, UserProfile
 from .permissions import CanManageUsers, IsActiveUser
 from .serializers import (
@@ -82,12 +92,22 @@ class PasswordResetRequestView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [PasswordResetIPThrottle, PasswordResetTargetThrottle]
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
-        user = User.objects.filter(email=email, is_active=True).first()
+        verified = UserProfile.objects.filter(
+            verified_email=email,
+            user__is_active=True,
+        ).select_related('user').first()
+        user = verified.user if verified is not None else None
+        if user is None:
+            # Legacy unverified accounts are eligible only when the address is
+            # unambiguous; never reset an arbitrary `.first()` duplicate.
+            candidates = list(User.objects.filter(email=email, is_active=True).order_by('id')[:2])
+            user = candidates[0] if len(candidates) == 1 else None
 
         raw_token = None
         reset_url = None
@@ -111,6 +131,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
@@ -123,6 +144,7 @@ class PhoneBindCodeView(APIView):
     """绑定手机前发送验证码（需登录）。"""
 
     permission_classes = [IsAuthenticated, IsActiveUser]
+    throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
         serializer = SmsCodeRequestSerializer(data=request.data)
@@ -161,6 +183,7 @@ class PhoneLoginCodeView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
         serializer = SmsCodeRequestSerializer(data=request.data)
@@ -179,8 +202,10 @@ class PhoneLoginView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
+        enforce_login_csrf(request)
         serializer = PhoneLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -192,13 +217,16 @@ class EmailBindCodeView(APIView):
     """绑定/验证邮箱前发送验证码（需登录）。"""
 
     permission_classes = [IsAuthenticated, IsActiveUser]
+    throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
         serializer = EmailCodeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
 
-        if User.objects.exclude(pk=request.user.pk).filter(email=email, is_active=True).exists():
+        if UserProfile.objects.exclude(user=request.user).filter(
+            verified_email=email, user__is_active=True,
+        ).exists():
             return Response({'email': ['该邮箱已被其他账号绑定。']}, status=400)
 
         raw_code = create_email_code(email, EmailVerificationCode.Purpose.BIND)
@@ -226,6 +254,7 @@ class EmailLoginCodeView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
         serializer = EmailCodeRequestSerializer(data=request.data)
@@ -244,8 +273,10 @@ class EmailLoginView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
+        enforce_login_csrf(request)
         serializer = EmailLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
@@ -273,8 +304,10 @@ class TokenLoginView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
+    throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
+        enforce_login_csrf(request)
         serializer = TokenLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = consume_remember_token(serializer.validated_data['token'])

@@ -1,6 +1,6 @@
 # 上线部署指南
 
-目标形态：**Linux 服务器 + Docker Compose + PostgreSQL**，nginx 在前面直发静态与效果图，
+目标形态：**Linux 服务器 + Docker Compose + PostgreSQL + Redis**，nginx 在前面直发静态并代理私有媒体，
 gunicorn 跑 Django，单一入口对外暴露（默认 80 端口）。
 
 ## 一、上线前必须知道的三件事
@@ -9,7 +9,8 @@ gunicorn 跑 Django，单一入口对外暴露（默认 80 端口）。
    的 `MAIZI_POLL_TIMEOUT`），前端 axios 超时 360s。因此超时必须满足
    `nginx(600s) > gunicorn(600s) > 前端(360s) > 后端轮询(300s)`，本仓库的配置已按此设定。
    任何一层调小都会出现「前端报错但后端还在出图」。
-2. **效果图是本地文件**：全部落在 `MEDIA_ROOT`，compose 里挂到命名卷 `media`。
+2. **效果图是私有本地文件**：全部落在 `MEDIA_ROOT`，compose 里挂到命名卷 `media`，
+   下载必须经过 Django 的登录态与对象归属校验，禁止 nginx 匿名目录直发。
    容器重建不会丢，但**换机器要迁移这个卷**，否则历史效果图全部 404。
 3. **大模型 Key 不在环境变量里**：在后台 `/admin/design/generationconfig/` 填写
    API Base / Key / 模型名并勾选「启用真实调用」。没配就自动回退占位图，服务不会挂。
@@ -23,7 +24,7 @@ git clone <你的仓库地址> && cd home_design_agent
 # 2. 准备环境变量
 cp .env.example .env
 python3 -c "import secrets;print(secrets.token_urlsafe(64))"   # 填进 DJANGO_SECRET_KEY
-vi .env    # 至少改：DJANGO_SECRET_KEY / POSTGRES_PASSWORD / DJANGO_ALLOWED_HOSTS
+vi .env    # 至少改：DJANGO_SECRET_KEY / POSTGRES_PASSWORD / DJANGO_ALLOWED_HOSTS / DJANGO_HEALTHCHECK_HOST / TLS 与短信配置
 
 # 3. 构建并启动（首次把 SEED_ON_START 设为 1，会灌入 prompt 模块与生图工作流）
 docker compose up -d --build
@@ -31,14 +32,15 @@ docker compose up -d --build
 # 4. 看启动日志确认迁移与种子完成
 docker compose logs -f web
 
-# 5. 自检
-curl -fsS http://<域名或IP>/api/design/health/
+# 5. 自检（同时检查数据库、Redis 与 TalkBot 默认数据）
+curl -fsS https://<域名>/api/talkbot/health/
 ```
 
 访问入口：
 
-- 前台：`http://<域名>/`，多窗口工作台 `/studio`
-- 后台：`http://<域名>/admin/`（账号用 `.env` 里的 `DJANGO_SUPERUSER_*`）
+- 前台：`https://<域名>/`，多窗口工作台 `/studio`
+- 后台：`https://<域名>/admin/`。首次启动后执行
+  `docker compose exec web python manage.py createsuperuser` 创建独立强密码管理员；示例配置不会创建默认管理员。
 
 首次跑通后建议把 `.env` 里的 `SEED_ON_START` 改回 `0`，避免每次重启重复灌示例数据。
 
@@ -51,8 +53,8 @@ curl -fsS http://<域名或IP>/api/design/health/
 | `POSTGRES_PASSWORD` | 是 | 数据库密码 |
 | `DJANGO_DEBUG` | — | 生产固定 `false` |
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | HTTPS 时必填 | 需带 scheme，如 `https://design.example.com` |
-| `DJANGO_SECURE_SSL_REDIRECT` / `DJANGO_SECURE_COOKIES` | — | **只有真的配好 HTTPS 才置 `true`**，否则重定向循环 |
-| `DJANGO_SERVE_MEDIA` | — | 有 nginx 时 `false`；单容器直跑时 `true` |
+| `DJANGO_SECURE_SSL_REDIRECT` / `DJANGO_SECURE_COOKIES` | — | 生产 Compose 强制为 `true`，发布前必须先配好 TLS 边缘代理 |
+| `DJANGO_NUM_PROXIES` | 是 | 当前 TLS 边缘代理 + Compose nginx 为 `2`；链路变化时同步调整 |
 | `SEED_ON_START` | — | 首次 `1`，之后 `0` |
 | `GUNICORN_TIMEOUT` | — | 默认 600，必须 > 前端 360s |
 | `PAYMENT_MODE` | 是 | 生产必须 `live`；`mock` 只用于本地联调 |
@@ -75,14 +77,16 @@ curl -fsS http://<域名或IP>/api/design/health/
 
 ## 四、配 HTTPS
 
-推荐在服务器已有的 nginx / SLB 上做 TLS 卸载，把 `HTTP_PORT` 改成内网端口（如 8080），
-由外层转发并透传 `X-Forwarded-Proto: https`（settings 已配 `SECURE_PROXY_SSL_HEADER`）。
+必须在服务器已有的 nginx / SLB 上做 TLS 卸载，把 `HTTP_PORT` 改成仅边缘代理可访问的
+内网端口（如 8080），由外层透传 `X-Forwarded-Proto: https`。防火墙必须禁止公网绕过
+边缘代理直连源站端口，否则可信代理计数与 IP 限流都可能失真。
 然后在 `.env` 里：
 
 ```
 DJANGO_CSRF_TRUSTED_ORIGINS=https://design.example.com
 DJANGO_SECURE_COOKIES=true
-DJANGO_SECURE_SSL_REDIRECT=false   # TLS 在外层卸载时保持 false，避免循环
+DJANGO_SECURE_SSL_REDIRECT=true
+DJANGO_NUM_PROXIES=2
 ```
 
 ## 五、日常运维
@@ -128,7 +132,7 @@ docker compose exec web python manage.py loaddata /tmp/seed.json
 
 ## 八、关于用 GitHub 部署
 
-- **GitHub Pages 不行**：Pages 只能托管静态文件，本项目需要 Django 进程、PostgreSQL
+- **GitHub Pages 不行**：Pages 只能托管静态文件，本项目需要 Django 进程、PostgreSQL、Redis
   和本地媒体存储，跑不起来。
 - **可行做法**：代码放 GitHub，用 `.github/workflows/deploy.yml`（本仓库已提供）在推
   `main` 时自动 SSH 到服务器执行 `git pull && docker compose up -d --build`。

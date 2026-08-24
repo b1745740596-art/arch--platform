@@ -14,11 +14,33 @@ import json
 import logging
 import time
 import uuid
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class WebhookPayment:
+    order_no: str | None
+    success: bool
+    reference: str | None
+    raw: dict
+    amount_cents: int | None = None
+    currency: str = ''
+
+
+def _decimal_amount_to_cents(value) -> int | None:
+    try:
+        amount = Decimal(str(value)) * 100
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if amount != amount.to_integral_value() or amount < 0:
+        return None
+    return int(amount)
 
 
 def _setting(name, default=None):
@@ -70,6 +92,16 @@ class BaseProvider:
     def webhook(self, request):
         raise NotImplementedError
 
+    def expected_payment(self, order):
+        return order.currency.upper(), int(order.amount_cents)
+
+    def validate_webhook_order(self, order, payment: WebhookPayment):
+        expected_currency, expected_amount = self.expected_payment(order)
+        if payment.amount_cents is None or payment.amount_cents != expected_amount:
+            raise ValueError('支付回调金额与订单不一致。')
+        if (payment.currency or '').upper() != expected_currency.upper():
+            raise ValueError('支付回调币种与订单不一致。')
+
 
 class MockProvider(BaseProvider):
     """本地联调用的模拟渠道，不发起真实扣款。"""
@@ -100,7 +132,7 @@ class StaticQrProvider(BaseProvider):
         }
 
     def webhook(self, request):
-        return None, False, None, {}
+        return WebhookPayment(None, False, None, {})
 
 
 class StripeProvider(BaseProvider):
@@ -125,6 +157,15 @@ class StripeProvider(BaseProvider):
             rate = float(_setting('PAYMENT_STRIPE_EXCHANGE_RATE', 0.14))
             return stripe_currency, int(round(order.amount_cents * rate))
         return stripe_currency, order.amount_cents
+
+    def expected_payment(self, order):
+        currency, amount = self._target_amount(order)
+        return currency.upper(), int(amount)
+
+    def validate_webhook_order(self, order, payment: WebhookPayment):
+        super().validate_webhook_order(order, payment)
+        if order.provider_reference and payment.reference != order.provider_reference:
+            raise ValueError('Stripe 回调会话与原支付订单不一致。')
 
     def create_payment(self, order, request):
         stripe = self._client()
@@ -167,12 +208,34 @@ class StripeProvider(BaseProvider):
         except Exception as exc:  # noqa: BLE001
             raise ValueError('Stripe webhook 验签失败') from exc
 
-        if event.type != 'checkout.session.completed':
-            return None, False, None, event.to_dict()
+        accepted_events = {
+            'checkout.session.completed',
+            'checkout.session.async_payment_succeeded',
+        }
+        if event.type not in accepted_events:
+            return WebhookPayment(None, False, None, {'type': event.type})
         session = event.data.object
         order_no = session.get('client_reference_id')
         reference = session.get('id')
-        return order_no, True, reference, event.to_dict()
+        payment_status = session.get('payment_status')
+        metadata = session.get('metadata') or {}
+        if metadata.get('order_no') and metadata.get('order_no') != order_no:
+            raise ValueError('Stripe 回调订单标识不一致。')
+        return WebhookPayment(
+            order_no=order_no,
+            success=payment_status == 'paid',
+            reference=reference,
+            amount_cents=session.get('amount_total'),
+            currency=(session.get('currency') or '').upper(),
+            raw={
+                'type': event.type,
+                'event_id': event.get('id'),
+                'session_id': reference,
+                'payment_status': payment_status,
+                'amount_total': session.get('amount_total'),
+                'currency': session.get('currency'),
+            },
+        )
 
 
 class WeChatPayProvider(BaseProvider):
@@ -257,10 +320,31 @@ class WeChatPayProvider(BaseProvider):
         resource = data.get('resource') or {}
         plaintext = _wechat_decrypt(cfg['api_v3_key'], resource)
         trade = json.loads(plaintext)
+        if trade.get('mchid') != cfg['mchid'] or trade.get('appid') != cfg['appid']:
+            raise ValueError('微信支付回调商户或应用标识不一致。')
         order_no = trade.get('out_trade_no')
         success = trade.get('trade_state') == 'SUCCESS'
         reference = trade.get('transaction_id')
-        return order_no, success, reference, data
+        amount = trade.get('amount') or {}
+        return WebhookPayment(
+            order_no=order_no,
+            success=success,
+            reference=reference,
+            amount_cents=amount.get('total'),
+            currency=(amount.get('currency') or '').upper(),
+            raw={
+                'notification_id': data.get('id'),
+                'mchid': trade.get('mchid'),
+                'appid': trade.get('appid'),
+                'out_trade_no': order_no,
+                'transaction_id': reference,
+                'trade_state': trade.get('trade_state'),
+                'amount': {
+                    'total': amount.get('total'),
+                    'currency': amount.get('currency'),
+                },
+            },
+        )
 
 
 def _wechat_decrypt(api_v3_key: str, resource: dict) -> str:
@@ -282,6 +366,7 @@ class AlipayProvider(BaseProvider):
             'app_id': _setting('PAYMENT_ALIPAY_APP_ID', ''),
             'private_key': _setting('PAYMENT_ALIPAY_PRIVATE_KEY', ''),
             'public_key': _setting('PAYMENT_ALIPAY_PUBLIC_KEY', ''),
+            'seller_id': _setting('PAYMENT_ALIPAY_SELLER_ID', ''),
             'notify_url': _setting('PAYMENT_ALIPAY_NOTIFY_URL', ''),
         }
 
@@ -340,10 +425,29 @@ class AlipayProvider(BaseProvider):
         signature = request.POST.get('sign', '')
         if not cfg['public_key'] or not rsa_sha256_verify(_load_public_key(cfg['public_key']), unsigned, signature):
             raise ValueError('支付宝回调验签失败')
+        if params.get('app_id') != cfg['app_id']:
+            raise ValueError('支付宝回调应用标识不一致。')
+        if cfg['seller_id'] and params.get('seller_id') != cfg['seller_id']:
+            raise ValueError('支付宝回调收款账号不一致。')
         order_no = params.get('out_trade_no')
         success = params.get('trade_status') in ('TRADE_SUCCESS', 'TRADE_FINISHED')
         reference = params.get('trade_no')
-        return order_no, success, reference, params
+        return WebhookPayment(
+            order_no=order_no,
+            success=success,
+            reference=reference,
+            amount_cents=_decimal_amount_to_cents(params.get('total_amount')),
+            currency='CNY',
+            raw={
+                'notify_id': params.get('notify_id'),
+                'app_id': params.get('app_id'),
+                'seller_id': params.get('seller_id'),
+                'out_trade_no': order_no,
+                'trade_no': reference,
+                'trade_status': params.get('trade_status'),
+                'total_amount': params.get('total_amount'),
+            },
+        )
 
 
 PROVIDERS = {
@@ -359,6 +463,8 @@ def get_provider(name: str):
     if _setting('PAYMENT_QR_MODE', False):
         return StaticQrProvider()
     if _setting('PAYMENT_MODE', 'mock') != 'live':
+        if not settings.DEBUG:
+            raise RuntimeError('生产环境禁止使用模拟支付渠道。')
         return MockProvider()
     provider_cls = PROVIDERS.get(name)
     if provider_cls is None:

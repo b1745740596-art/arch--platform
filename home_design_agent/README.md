@@ -53,8 +53,7 @@ cd "/Users/didi/Architecture Agent Platform/home_design_agent"
 | `--port 8010` | 换端口（:8000 被别的用户占用时） |
 | `-h` | 查看用法 |
 
-脚本会自动设 `DJANGO_SERVE_MEDIA=true`。这一步不能省：`DEBUG` 默认 **false**，
-且本地没有 nginx，不开这个开关时 `/media/renders/*.png` 会 404、前端效果图空白。
+用户上传和生成的 `/media/` 文件始终由 Django 校验登录态与对象归属；本地与生产行为一致。
 
 > 手工启动等价于（不推荐，容易漏步骤导致白屏）：
 >
@@ -63,7 +62,7 @@ cd "/Users/didi/Architecture Agent Platform/home_design_agent"
 > (cd frontend && npm run build)          # 改了前端才需要
 > python manage.py collectstatic --noinput  # 漏掉这步 → /static/spa/*.js 全 404，整站白屏
 > python manage.py migrate
-> DJANGO_SERVE_MEDIA=true python manage.py runserver 0.0.0.0:8000 --noreload
+> python manage.py runserver 0.0.0.0:8000 --noreload
 > ```
 >
 > 关键点：`DEBUG=false` 时 `/static/` 由 WhiteNoise 从 `STATIC_ROOT`（`staticfiles/`）托管，
@@ -105,6 +104,7 @@ home_design_agent/
 │   ├── urls.py
 │   ├── admin.py
 │   └── migrations/
+├── talkbot/                # 谈单机器人：多轮会话、画像、策略、RAG、编排与建单
 ├── frontend/               # Vue3 + Vite 前端 SPA
 │   ├── src/
 │   │   ├── api/            # axios 客户端
@@ -137,6 +137,26 @@ home_design_agent/
 示例数据：`python manage.py seed_demo`（家具 15、设计师 3、施工队 3）。
 家具带「适用空间」字段，生图时按空间过滤，详见「图生图」一节。
 
+## TalkBot 谈单机器人
+
+App 底部「AI 顾问」与 Web `/talk` 已接入多轮谈单链路：
+
+1. 每轮识别情绪与意图，并从用户明确表达中渐进补齐城市、面积、家庭、风格、预算、入住时间、顾虑和联系方式；
+2. 按「需求挖掘 → 方案匹配 → 异议处理 → 促单」状态机选择单一主导动作，一次最多追问一项；
+3. 从后台知识库检索环保、报价、增项、工期等可核验内容；文本 LLM 不可用或超时时自动回退规则回复；
+4. 用户明确同意联系且关键信息完整后，幂等创建 `Project`、三档 `DesignScheme`、`HomeReport`、`Lead`、`HomeOrder` 与 `OrderDetail`；只创建待确认项目订单，不自动扣款；
+5. `TalkWorkflow` + `TalkStep` 支持后台调整步骤顺序、参数与容错，每轮执行轨迹随机器人消息保留，便于后台回放。
+
+主要接口：
+
+- `POST /api/talkbot/sessions/`：新建会话；
+- `GET /api/talkbot/health/`：部署健康检查（默认流程与知识库就绪状态）；
+- `GET /api/talkbot/sessions/{id}/`：读取用户自己的会话、画像与历史消息；
+- `POST /api/talkbot/sessions/{id}/messages/`：发送消息并同步获得回复；
+- `POST /api/talkbot/sessions/{id}/convert/`：确认授权后生成方案与项目订单。
+
+基础知识库和默认流程由迁移自动写入，也可幂等刷新：`python manage.py seed_talkbot`。TalkBot 默认以规则模式运行；知识库与模型配置验收后，同时设置 `TALKBOT_LLM_ENABLED=true` 并启用后台 `GenerationConfig` 才会调用 OpenAI 兼容文本模型。消息接口支持 `client_message_id` 幂等重试，模型回复还会经过数字事实 grounding 与合规过滤。
+
 ## 支付与额度
 
 效果图生成为按次计费：每位用户一次性赠送 5 次免费额度（`PAYMENT_FREE_CREDITS`，默认 5），
@@ -162,13 +182,13 @@ home_design_agent/
 
 ## 上线部署
 
-生产形态：Docker Compose（nginx + gunicorn + PostgreSQL），完整步骤见
+生产形态：Docker Compose（nginx + gunicorn + PostgreSQL + Redis 限流缓存），完整步骤见
 [`deploy/DEPLOY.md`](deploy/DEPLOY.md)。
 
 ```bash
 cp .env.example .env   # 至少填 DJANGO_SECRET_KEY / POSTGRES_PASSWORD / DJANGO_ALLOWED_HOSTS
 docker compose up -d --build
-curl -fsS http://<域名>/api/design/health/
+curl -fsS https://<域名>/api/talkbot/health/
 ```
 
 关键约束：
@@ -176,8 +196,8 @@ curl -fsS http://<域名>/api/design/health/
 - 设置项全部从环境变量读取（`config/settings.py` 用 `django-environ`）；
   未配 `DATABASE_URL` 时自动回落本地 SQLite，开发流程不变。
 - 生图是同步长请求，超时链必须满足 `nginx 600s > gunicorn 600s > 前端 360s > 后端轮询 300s`。
-- 效果图落在 `MEDIA_ROOT`（compose 中为 `/data/media` 命名卷）。`DEBUG=False` 后
-  `/media/` 由 nginx 直发；无 nginx 时把 `DJANGO_SERVE_MEDIA=true` 让 Django 兜底。
+- 效果图落在 `MEDIA_ROOT`（compose 中为 `/data/media` 命名卷），`/media/` 经 Django
+  做会话和对象级鉴权；nginx 不得匿名直发用户原图、户型图或效果图。
 - 大模型 API Key 不走环境变量，上线后在 `/admin/design/generationconfig/` 配置。
 
 ## Prompt 控制模块

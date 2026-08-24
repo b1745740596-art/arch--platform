@@ -2,10 +2,11 @@ import json
 
 import django
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -46,6 +47,17 @@ from .imagegen import run_render_job
 from .prompts import option_payload, suggest_variants
 from .services import build_preview_schemes
 from payments.services import consume_generation_credit, refund_generation_credit
+from config.csrf import enforce_login_csrf
+from config.throttles import (
+    AuthLoginIPThrottle,
+    AuthLoginTargetThrottle,
+    AuthRegisterIPThrottle,
+    DesignRenderIPThrottle,
+    DesignRenderUserThrottle,
+    DesignSalesIPThrottle,
+    DesignSalesUserThrottle,
+)
+from users.services import normalize_phone
 
 
 @api_view(['GET'])
@@ -60,19 +72,19 @@ def health(request):
 
 
 @api_view(['GET'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def showcase_images(request):
-    """首页效果图库：返回最近成功生成的 AI 效果图，供展示区使用。
-
-    不返回用户、提示词等隐私信息，仅返回公开预览所需字段。
-    """
+    """返回当前用户最近成功生成的 AI 效果图。"""
     room_type = request.query_params.get('room_type', '')
     try:
         limit = max(1, min(int(request.query_params.get('limit', 3)), 12))
     except (TypeError, ValueError):
         limit = 3
 
-    jobs = RenderJob.objects.filter(status=RenderJob.Status.SUCCESS).order_by('-created_at')
+    jobs = RenderJob.objects.filter(
+        status=RenderJob.Status.SUCCESS,
+        project__user=request.user,
+    ).order_by('-created_at')
     if room_type:
         jobs = jobs.filter(room_type=room_type)
 
@@ -132,8 +144,27 @@ def _user_payload(user):
     }
 
 
+def _verified_contact_phone(request, submitted_phone, *, consent, field_name='customer_phone'):
+    """Bind public sales actions to the authenticated user's verified phone."""
+    submitted_phone = normalize_phone(submitted_phone)
+    if request.user.is_staff:
+        return submitted_phone
+    if not consent:
+        raise ValidationError({'consent': '请明确同意平台根据本次需求联系你。'})
+    try:
+        verified_phone = normalize_phone(request.user.profile.phone)
+    except Exception:  # noqa: BLE001 - legacy accounts may not have a profile yet
+        verified_phone = ''
+    if not verified_phone:
+        raise ValidationError({field_name: '请先在账号设置完成短信验证绑定。'})
+    if submitted_phone and submitted_phone != verified_phone:
+        raise ValidationError({field_name: '只能使用账号已验证的手机号。'})
+    return verified_phone
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRegisterIPThrottle])
 def register_user(request):
     """用户端注册：只创建普通用户，`is_staff/is_superuser` 均为 False。"""
     serializer = RegisterSerializer(data=request.data)
@@ -144,8 +175,10 @@ def register_user(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthLoginIPThrottle, AuthLoginTargetThrottle])
 def login_user(request):
     """用户端登录：使用 Django Session 登录，后台访问仍受 is_staff 限制。"""
+    enforce_login_csrf(request)
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     username = serializer.validated_data['username']
@@ -198,10 +231,16 @@ def prompt_module_suggest(request):
     )})
 
 
-class OwnerViewSet(viewsets.ModelViewSet):
+class OwnerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Owner.objects.all()
     serializer_class = OwnerSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(projects__user=self.request.user).distinct()
+        return qs
 
 
 class ProjectViewSet(viewsets.ModelViewSet):
@@ -216,7 +255,24 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        owner = serializer.validated_data.get('owner')
+        if (
+            owner
+            and not self.request.user.is_staff
+            and not owner.projects.filter(user=self.request.user).exists()
+        ):
+            raise PermissionDenied('不能关联其他用户的业主资料。')
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer):
+        owner = serializer.validated_data.get('owner')
+        if (
+            owner
+            and not self.request.user.is_staff
+            and not owner.projects.filter(user=self.request.user).exists()
+        ):
+            raise PermissionDenied('不能关联其他用户的业主资料。')
+        serializer.save()
 
     def get_serializer_class(self):
         if self.action == 'list':
@@ -255,6 +311,7 @@ class HomeReportViewSet(viewsets.ModelViewSet):
         data = serializer.validated_data
         report_data = data.get('report') or {}
         project = data.get('project')
+        render_job = data.get('render_job')
 
         if project is None:
             title = (
@@ -269,12 +326,31 @@ class HomeReportViewSet(viewsets.ModelViewSet):
             )
         elif project.user_id != self.request.user.id and not self.request.user.is_staff:
             raise PermissionDenied('不能把报告保存到其他用户的项目。')
+        if (
+            render_job
+            and render_job.project.user_id != self.request.user.id
+            and not self.request.user.is_staff
+        ):
+            raise PermissionDenied('不能引用其他用户的生成任务。')
 
         serializer.save(
             user=self.request.user,
             project=project,
             report=report_data,
         )
+
+    def perform_update(self, serializer):
+        project = serializer.validated_data.get('project', serializer.instance.project)
+        render_job = serializer.validated_data.get('render_job', serializer.instance.render_job)
+        if project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能把报告移动到其他用户的项目。')
+        if (
+            render_job
+            and render_job.project.user_id != self.request.user.id
+            and not self.request.user.is_staff
+        ):
+            raise PermissionDenied('不能引用其他用户的生成任务。')
+        serializer.save()
 
 
 class HomeOrderViewSet(viewsets.ModelViewSet):
@@ -286,6 +362,11 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
     queryset = HomeOrder.objects.select_related('project', 'report').all()
     serializer_class = HomeOrderSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_throttles(self):
+        if self.action == 'create':
+            return [DesignSalesUserThrottle(), DesignSalesIPThrottle()]
+        return super().get_throttles()
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -306,9 +387,18 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
         order.save(update_fields=['status', 'updated_at'])
         return Response(self.get_serializer(order).data)
 
+    def _locked_order(self, pk):
+        # Do not inherit select_related('report'): PostgreSQL rejects FOR UPDATE
+        # against the nullable side of that outer join.
+        qs = HomeOrder.objects.all()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return get_object_or_404(qs.select_for_update(), pk=pk)
+
     @transaction.atomic
     def perform_create(self, serializer):
         data = serializer.validated_data
+        consent = data.pop('consent', False)
         report = data.get('report')
         project = data.get('project') or (report.project if report else None)
 
@@ -316,6 +406,13 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('请先选择要下单的项目或报告。')
         if project.user_id != self.request.user.id and not self.request.user.is_staff:
             raise PermissionDenied('不能为其他用户的项目下单。')
+        if report and report.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能使用其他用户的报告下单。')
+        if report and report.project_id != project.id:
+            raise ValidationError('订单项目必须与报告所属项目一致。')
+        project = Project.objects.select_for_update().get(pk=project.pk)
+        if report:
+            report = HomeReport.objects.select_for_update().get(pk=report.pk)
 
         amount_min = data.get('amount_min')
         amount_max = data.get('amount_max')
@@ -348,7 +445,11 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
             or self.request.user.get_full_name().strip()
             or self.request.user.username
         )
-        customer_phone = data.get('customer_phone') or ''
+        customer_phone = _verified_contact_phone(
+            self.request,
+            data.get('customer_phone') or '',
+            consent=consent,
+        )
         title = data.get('title') or (report.title if report else project.title)
 
         order = serializer.save(
@@ -372,38 +473,84 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
         project.save(update_fields=['status', 'updated_at'])
         return order
 
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied('请使用订单操作按钮更新状态。')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        raise ValidationError('订单不可直接删除，请执行取消并保留审计记录。')
+
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def cancel(self, request, pk=None):
         """用户可取消自己的待确认/已确认订单，后台人员可取消任何未完结订单。"""
-        order = self.get_object()
+        order = self._locked_order(pk)
         self._ensure_order_owner_or_staff(order)
         if order.status in (HomeOrder.Status.PAID, HomeOrder.Status.COMPLETED, HomeOrder.Status.CANCELLED):
             raise ValidationError('当前订单状态不能取消。')
-        return self._transition(order, HomeOrder.Status.CANCELLED)
+        project = Project.objects.select_for_update().get(pk=order.project_id)
+        report = (
+            HomeReport.objects.select_for_update().get(pk=order.report_id)
+            if order.report_id else None
+        )
+        order.status = HomeOrder.Status.CANCELLED
+        order.save(update_fields=['status', 'updated_at'])
+
+        from talkbot.models import Conversation
+
+        try:
+            talkbot_conversation = Conversation.objects.select_for_update().get(order=order)
+        except Conversation.DoesNotExist:
+            talkbot_conversation = None
+        if talkbot_conversation:
+            talkbot_conversation.status = Conversation.Status.CLOSED
+            talkbot_conversation.stage = Conversation.Stage.FOLLOW_UP
+            talkbot_conversation.save(update_fields=['status', 'stage', 'updated_at'])
+            talkbot_leads = Lead.objects.select_for_update().filter(
+                project=project,
+                remark__startswith='TalkBot',
+            )
+            talkbot_lead_ids = list(talkbot_leads.values_list('pk', flat=True))
+            Lead.objects.filter(pk__in=talkbot_lead_ids).update(status=Lead.Status.CLOSED)
+            if not project.home_orders.exclude(pk=order.pk).exclude(
+                status=HomeOrder.Status.CANCELLED,
+            ).exists():
+                project.status = Project.Status.LEAD
+                project.save(update_fields=['status', 'updated_at'])
+            if report and not report.home_orders.exclude(pk=order.pk).exclude(
+                status=HomeOrder.Status.CANCELLED,
+            ).exists():
+                report.status = HomeReport.Status.SAVED
+                report.save(update_fields=['status', 'updated_at'])
+        return Response(self.get_serializer(order).data)
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def confirm(self, request, pk=None):
         """后台确认订单。"""
         self._ensure_staff()
-        order = self.get_object()
+        order = self._locked_order(pk)
         if order.status != HomeOrder.Status.PENDING:
             raise ValidationError('仅待确认订单可执行确认。')
         return self._transition(order, HomeOrder.Status.CONFIRMED)
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def mark_paid(self, request, pk=None):
         """后台标记订单已支付。"""
         self._ensure_staff()
-        order = self.get_object()
+        order = self._locked_order(pk)
         if order.status not in (HomeOrder.Status.PENDING, HomeOrder.Status.CONFIRMED):
             raise ValidationError('仅待确认或已确认订单可标记为已支付。')
         return self._transition(order, HomeOrder.Status.PAID)
 
     @action(detail=True, methods=['post'])
+    @transaction.atomic
     def complete(self, request, pk=None):
         """后台标记订单已完成。"""
         self._ensure_staff()
-        order = self.get_object()
+        order = self._locked_order(pk)
         if order.status != HomeOrder.Status.PAID:
             raise ValidationError('仅已支付订单可标记为已完成。')
         return self._transition(order, HomeOrder.Status.COMPLETED)
@@ -416,10 +563,28 @@ class DesignSchemeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(project__user=self.request.user)
         project_id = self.request.query_params.get('project')
         if project_id:
             qs = qs.filter(project_id=project_id)
         return qs
+
+    def _staff_write_only(self):
+        if not self.request.user.is_staff:
+            raise PermissionDenied('方案内容仅允许后台人员编辑。')
+
+    def perform_create(self, serializer):
+        self._staff_write_only()
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._staff_write_only()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._staff_write_only()
+        instance.delete()
 
     @action(detail=True, methods=['post'])
     def toggle_favorite(self, request, pk=None):
@@ -434,13 +599,47 @@ class LeadViewSet(viewsets.ModelViewSet):
     serializer_class = LeadSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_throttles(self):
+        if self.action == 'create':
+            return [DesignSalesUserThrottle(), DesignSalesIPThrottle()]
+        return super().get_throttles()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(project__user=self.request.user)
+        return qs
+
     def perform_create(self, serializer):
-        lead = serializer.save()
+        project = serializer.validated_data['project']
+        if project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能为其他用户的项目创建线索。')
+        scheme = serializer.validated_data.get('scheme')
+        if scheme and scheme.project_id != project.id:
+            raise ValidationError({'scheme': '线索方案必须属于所选项目。'})
+        consent = serializer.validated_data.pop('consent', False)
+        contact_phone = _verified_contact_phone(
+            self.request,
+            serializer.validated_data.get('contact_phone') or '',
+            consent=consent,
+            field_name='contact_phone',
+        )
+        lead = serializer.save(contact_phone=contact_phone)
         # 留资后推进项目状态（PRD 5.5 线索转化）
         project = lead.project
         if project.status not in (Project.Status.SIGNED,):
             project.status = Project.Status.LEAD
             project.save(update_fields=['status', 'updated_at'])
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied('线索状态仅允许后台人员维护。')
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied('线索仅允许后台人员删除。')
+        instance.delete()
 
 
 class CustomerRequirementViewSet(viewsets.ModelViewSet):
@@ -454,19 +653,43 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerRequirementSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_throttles(self):
+        if self.action == 'create':
+            return [DesignSalesUserThrottle(), DesignSalesIPThrottle()]
+        return super().get_throttles()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(user=self.request.user)
+        return qs
+
     @transaction.atomic
     def perform_create(self, serializer):
         """需求提交后同步到业主、项目与留资线索，方便后台统一跟进。"""
-        requirement = serializer.save()
+        phone = serializer.validated_data['phone']
+        if not self.request.user.is_staff:
+            try:
+                verified_phone = self.request.user.profile.phone or ''
+            except Exception:  # noqa: BLE001 - legacy accounts may not have a profile yet
+                verified_phone = ''
+            if not verified_phone or phone != verified_phone:
+                raise ValidationError({'phone': '请先在账号设置完成短信验证，并使用已绑定手机号。'})
 
-        owner, owner_created = Owner.objects.get_or_create(
-            phone=requirement.phone,
-            defaults={
-                'name': requirement.name,
-                'city': requirement.city,
-                'community': requirement.community,
-            },
-        )
+        requirement = serializer.save(user=self.request.user)
+
+        owner_qs = Owner.objects.select_for_update().filter(phone=requirement.phone)
+        if not self.request.user.is_staff:
+            owner_qs = owner_qs.filter(projects__user=self.request.user)
+        owner = owner_qs.order_by('id').first()
+        owner_created = owner is None
+        if owner_created:
+            owner = Owner.objects.create(
+                phone=requirement.phone,
+                name=requirement.name,
+                city=requirement.city,
+                community=requirement.community,
+            )
         if not owner_created:
             owner.name = requirement.name or owner.name
             owner.city = requirement.city or owner.city
@@ -481,6 +704,7 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
 
         project = Project.objects.create(
             owner=owner,
+            user=self.request.user,
             title=f'{requirement.city or "未填写城市"}·{requirement.room_type or "装修需求"}',
             city=requirement.city,
             community=requirement.community,
@@ -504,7 +728,7 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
         )
 
 
-class ServiceProviderViewSet(viewsets.ModelViewSet):
+class ServiceProviderViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ServiceProvider.objects.filter(is_active=True)
     serializer_class = ServiceProviderSerializer
     permission_classes = [IsAuthenticated]
@@ -552,14 +776,31 @@ class RenderJobViewSet(viewsets.ModelViewSet):
     serializer_class = RenderJobSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_throttles(self):
+        if self.action in {'create', 'regenerate'}:
+            return [DesignRenderUserThrottle(), DesignRenderIPThrottle()]
+        return super().get_throttles()
+
     def get_queryset(self):
         qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(project__user=self.request.user)
         project_id = self.request.query_params.get('project')
         if project_id:
             qs = qs.filter(project_id=project_id)
         return qs
 
     def perform_create(self, serializer):
+        project = serializer.validated_data['project']
+        if project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能为其他用户的项目生成效果图。')
+        if not self.request.user.is_staff:
+            try:
+                profile = self.request.user.profile
+            except Exception:  # noqa: BLE001 - legacy users may not have a profile
+                profile = None
+            if not profile or not (profile.phone or profile.email_verified):
+                raise PermissionDenied('请先验证手机号或邮箱，再使用 AI 生成功能。')
         module_codes = serializer.validated_data.pop('module_codes', '')
         deduction = consume_generation_credit(self.request.user)
         job = None
@@ -577,6 +818,12 @@ class RenderJobViewSet(viewsets.ModelViewSet):
             if job is not None:
                 job.delete()
             raise
+
+    def perform_update(self, serializer):
+        project = serializer.validated_data.get('project', serializer.instance.project)
+        if project.user_id != self.request.user.id and not self.request.user.is_staff:
+            raise PermissionDenied('不能把生成任务关联到其他用户的项目。')
+        serializer.save()
 
     @action(detail=True, methods=['post'])
     def regenerate(self, request, pk=None):

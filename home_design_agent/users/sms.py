@@ -8,6 +8,7 @@ import logging
 
 import httpx
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,11 @@ def get_sms_backend():
     backend = getattr(settings, 'SMS_BACKEND', 'console')
     if backend == 'webhook':
         return WebhookSmsBackend()
-    return ConsoleSmsBackend()
+    if backend == 'console':
+        if not settings.DEBUG:
+            raise ImproperlyConfigured('生产环境禁止使用 console 短信后端。')
+        return ConsoleSmsBackend()
+    raise ImproperlyConfigured(f'不支持的短信后端：{backend}')
 
 
 def send_sms_code(phone, code):

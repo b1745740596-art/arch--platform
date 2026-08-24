@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -25,16 +29,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pip-audit==2.9.0
 
-      - name: Django deploy check
-        env:
-          DJANGO_DEBUG: 'false'
-          DJANGO_SECRET_KEY: ci-only-not-a-real-secret-key-0123456789
-          DJANGO_ALLOWED_HOSTS: example.com
-        run: python manage.py check --deploy
-
-      - name: Run backend tests
-        run: pytest -q
+      - name: Audit Python dependencies
+        run: pip-audit -r requirements.txt --progress-spinner off
 
       - uses: actions/setup-node@v4
         with:
@@ -43,8 +41,21 @@ jobs:
       - name: Build frontend
         working-directory: home_design_agent/frontend
         run: |
-          npm install
+          npm ci
+          npm audit --omit=dev --audit-level=high
           npm run build
+
+      - name: Django deploy check
+        env:
+          DJANGO_DEBUG: 'false'
+          DJANGO_SECRET_KEY: ci-only-not-a-real-secret-key-0123456789abcdefghijklmnopqrstuvwxyz
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_SECURE_SSL_REDIRECT: 'true'
+          DJANGO_SECURE_COOKIES: 'true'
+        run: python manage.py check --deploy --fail-level WARNING
+
+      - name: Run backend tests
+        run: pytest -q
 
   deploy:
     needs: check
@@ -83,11 +94,24 @@ jobs:
           HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
           if [ -z "$HEALTH_URL" ]; then
-            echo "未配置 HEALTH_URL，跳过健康检查"
-            exit 0
+            HEALTH_URL="https://plankeai-home.com/api/talkbot/health/"
           fi
+          if [[ "$HEALTH_URL" != https://* ]]; then
+            echo "HEALTH_URL 必须使用 HTTPS"
+            exit 1
+          fi
+          HEALTH_URL="${HEALTH_URL%/}"
+          HEALTH_URL="${HEALTH_URL%/api/design/health}"
+          if [[ "$HEALTH_URL" != */api/talkbot/health ]]; then
+            HEALTH_URL="$HEALTH_URL/api/talkbot/health"
+          fi
+          HEALTH_URL="$HEALTH_URL/"
+          echo "检查 TalkBot 就绪状态：$HEALTH_URL"
           for i in $(seq 1 10); do
-            if curl -fsS "$HEALTH_URL"; then echo "healthy"; exit 0; fi
+            if curl -fsS --connect-timeout 5 --max-time 10 "$HEALTH_URL" | python3 -c 'import json,sys; data=json.load(sys.stdin); raise SystemExit(0 if data.get("ready") is True else 1)'; then
+              echo "ready"
+              exit 0
+            fi
             sleep 10
           done
-          echo "健康检查失败"; exit 1
+          echo "TalkBot 就绪检查失败"; exit 1

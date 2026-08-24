@@ -46,9 +46,6 @@ cd "$PROJECT_DIR"
 [ -x .venv/bin/python ] || die "缺少 .venv，请先 python -m venv .venv && pip install -r requirements.txt"
 PY=.venv/bin/python
 
-# DEBUG=false 且没有 nginx 时 Django 默认不托管 /media/，效果图会 404。
-# 本地单进程直跑必须兜底打开；shell 里 export 的值优先于 .env。
-export DJANGO_SERVE_MEDIA="${DJANGO_SERVE_MEDIA:-true}"
 if [ "$DEBUG_MODE" = "1" ]; then
   export DJANGO_DEBUG=true
 fi
@@ -79,6 +76,7 @@ if [ "$DO_SEED" = "1" ]; then
   step "灌入基线数据"
   "$PY" manage.py seed_prompt_modules --update
   "$PY" manage.py seed_workflows
+  "$PY" manage.py seed_talkbot
   "$PY" manage.py seed_demo
 fi
 
@@ -108,14 +106,14 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 
 # ---- 5. 启动 ----
-step "启动 Django（DEBUG=${DJANGO_DEBUG:-false}，SERVE_MEDIA=${DJANGO_SERVE_MEDIA}）"
+step "启动 Django（DEBUG=${DJANGO_DEBUG:-false}，媒体文件启用对象级鉴权）"
 cat <<BANNER
 
   前端首页    http://localhost:$PORT/
   设计工作台  http://localhost:$PORT/studio
   效果图列表  http://localhost:$PORT/render
   管理后台    http://localhost:$PORT/admin/
-  健康检查    http://localhost:$PORT/api/design/health/
+  就绪检查    http://localhost:$PORT/api/talkbot/health/
 
   若仍白屏，按 Cmd+Shift+R 硬刷新清掉此前的 404 缓存。
   Ctrl+C 停止服务。

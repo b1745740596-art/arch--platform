@@ -6,6 +6,7 @@
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
+from django.core.cache import cache
 from django.core import mail
 from django.core.management import call_command
 from django.test import override_settings
@@ -19,6 +20,7 @@ from users.models import (
     SmsVerificationCode,
     UserProfile,
 )
+from users.services import create_remember_token
 
 User = get_user_model()
 
@@ -113,6 +115,20 @@ class ChangePasswordViewTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('new_password', response.data)
 
+    def test_change_password_revokes_remember_tokens(self):
+        raw_token = create_remember_token(self.user)
+        self.client.force_authenticate(self.user)
+        response = self.client.post(
+            CHANGE_PASSWORD_URL,
+            {'old_password': 'oldpass123', 'new_password': 'brandnew123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        login_response = APIClient().post(
+            TOKEN_LOGIN_URL, {'token': raw_token}, format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
+
 
 @override_settings(
     EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
@@ -152,7 +168,23 @@ class PasswordResetFlowTests(APITestCase):
         self.assertEqual(response.data['debug']['uid'], self.user.pk)
         self.assertIn('reset_url', response.data['debug'])
 
+    def test_duplicate_unverified_email_does_not_reset_arbitrary_account(self):
+        User.objects.create_user(
+            username='duplicate-carol',
+            email='carol@example.com',
+            password='secret123',
+        )
+        response = self.client.post(
+            RESET_REQUEST_URL,
+            {'email': 'carol@example.com'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(PasswordResetToken.objects.count(), 0)
+
     def test_confirm_resets_password_and_consumes_token(self):
+        remember_token = create_remember_token(self.user)
         request_response = self.client.post(
             RESET_REQUEST_URL,
             {'email': 'carol@example.com'},
@@ -175,6 +207,10 @@ class PasswordResetFlowTests(APITestCase):
         self.assertTrue(self.user.check_password('brandnew123'))
         token = PasswordResetToken.objects.get(user=self.user)
         self.assertIsNotNone(token.used_at)
+        login_response = APIClient().post(
+            TOKEN_LOGIN_URL, {'token': remember_token}, format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_confirm_rejects_reused_token(self):
         request_response = self.client.post(
@@ -249,6 +285,20 @@ class AdminUserViewSetTests(APITestCase):
         self.assertEqual(user.profile.display_name, 'Designer One')
         self.assertEqual(list(user.groups.values_list('name', flat=True)), ['designer'])
 
+    def test_admin_password_reset_revokes_remember_token(self):
+        raw_token = create_remember_token(self.regular)
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            f'{ADMIN_USERS_URL}{self.regular.id}/',
+            {'password': 'new-admin-set-pass123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        login_response = APIClient().post(
+            TOKEN_LOGIN_URL, {'token': raw_token}, format='json',
+        )
+        self.assertEqual(login_response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_operations_user_with_permission_can_list(self):
         group = Group.objects.create(name='operations')
         permission = Permission.objects.get(
@@ -263,11 +313,79 @@ class AdminUserViewSetTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+        escalate = self.client.patch(
+            f'{ADMIN_USERS_URL}{self.regular.id}/',
+            {'is_staff': True, 'is_superuser': True},
+            format='json',
+        )
+        reset_other = self.client.patch(
+            f'{ADMIN_USERS_URL}{self.admin.id}/',
+            {'roles': ['operations'], 'password': 'attackerpass123'},
+            format='json',
+        )
+        self.assertEqual(escalate.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(reset_other.status_code, status.HTTP_403_FORBIDDEN)
+        self.regular.refresh_from_db()
+        self.admin.refresh_from_db()
+        self.assertFalse(self.regular.is_staff)
+        self.assertFalse(self.regular.is_superuser)
+        self.assertTrue(self.admin.is_superuser)
+        self.assertTrue(self.admin.check_password('rootpass123'))
+
+    def test_change_user_permission_cannot_take_over_login_identity(self):
+        operator = User.objects.create_user(
+            username='operator', email='operator@example.com', password='secret123',
+        )
+        victim = User.objects.create_user(
+            username='victim', email='victim@example.com', password='victimpass123',
+        )
+        UserProfile.objects.create(
+            user=victim,
+            phone='13800000009',
+            email_verified=True,
+            verified_email='victim@example.com',
+        )
+        permissions = Permission.objects.filter(
+            content_type__app_label='auth',
+            codename__in=('view_user', 'change_user'),
+        )
+        operator.user_permissions.add(*permissions)
+        self.client.force_authenticate(operator)
+
+        response = self.client.patch(
+            f'{ADMIN_USERS_URL}{victim.id}/',
+            {
+                'username': 'operator-owned',
+                'email': 'operator@example.com',
+                'phone': '13900000009',
+                'password': 'attackerpass123',
+                'is_staff': True,
+                'is_superuser': True,
+                'first_name': 'Allowed profile note',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        victim.refresh_from_db()
+        victim.profile.refresh_from_db()
+        self.assertEqual(victim.username, 'victim')
+        self.assertEqual(victim.email, 'victim@example.com')
+        self.assertEqual(victim.profile.phone, '13800000009')
+        self.assertTrue(victim.check_password('victimpass123'))
+        self.assertFalse(victim.is_staff)
+        self.assertFalse(victim.is_superuser)
+        self.assertEqual(victim.first_name, 'Allowed profile note')
+
 
 @override_settings(DEBUG=True, SMS_BACKEND='console')
 class PhoneAuthFlowTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(username='dave', password='secret123')
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
 
     def _bind_phone(self, phone='13800000000'):
         self.client.force_authenticate(self.user)
@@ -330,6 +448,14 @@ class PhoneAuthFlowTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('debug', response.data)
 
+    def test_phone_code_target_is_rate_limited(self):
+        responses = [
+            self.client.post(PHONE_LOGIN_CODE_URL, {'phone': '13900000000'}, format='json')
+            for _ in range(6)
+        ]
+        self.assertTrue(all(item.status_code == status.HTTP_200_OK for item in responses[:5]))
+        self.assertEqual(responses[-1].status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
     def test_phone_login_auto_registers(self):
         code_response = self.client.post(PHONE_LOGIN_CODE_URL, {'phone': '13800000000'}, format='json')
         raw_code = code_response.data['debug']['code']
@@ -364,11 +490,16 @@ class PhoneAuthFlowTests(APITestCase):
 )
 class EmailAuthFlowTests(APITestCase):
     def setUp(self):
+        cache.clear()
         self.user = User.objects.create_user(
             username='erin',
             email='erin@example.com',
             password='secret123',
         )
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
 
     def _bind_email(self, email='erin@example.com'):
         self.client.force_authenticate(self.user)
@@ -396,7 +527,14 @@ class EmailAuthFlowTests(APITestCase):
         self.assertIsNotNone(code.used_at)
 
     def test_bind_rejects_email_used_by_other(self):
-        User.objects.create_user(username='other', email='other@example.com', password='secret123')
+        other = User.objects.create_user(
+            username='other', email='other@example.com', password='secret123',
+        )
+        UserProfile.objects.create(
+            user=other,
+            email_verified=True,
+            verified_email='other@example.com',
+        )
         self.client.force_authenticate(self.user)
         response = self.client.post(EMAIL_BIND_CODE_URL, {'email': 'other@example.com'}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -437,6 +575,15 @@ class EmailAuthFlowTests(APITestCase):
         me_response = self.client.get(ME_URL)
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.data['username'], user.username)
+
+    def test_verified_email_identity_is_unique(self):
+        self._bind_email()
+        other = User.objects.create_user(
+            username='email-other', email='erin@example.com', password='secret123',
+        )
+        self.client.force_authenticate(other)
+        response = self.client.post(EMAIL_BIND_CODE_URL, {'email': 'erin@example.com'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_email_login_rejects_wrong_code(self):
         self.client.post(EMAIL_LOGIN_CODE_URL, {'email': 'erin@example.com'}, format='json')
@@ -493,4 +640,3 @@ class SeedRolesCommandTests(APITestCase):
 
         names = set(Group.objects.values_list('name', flat=True))
         self.assertTrue({'customer', 'designer', 'operations', 'admin'} <= names)
-

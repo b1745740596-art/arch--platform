@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class IsActiveUser(BasePermission):
@@ -15,17 +15,32 @@ class IsActiveUser(BasePermission):
 
 
 class CanManageUsers(BasePermission):
-    """用户管理权限：超级用户，或持有 auth.view_user 权限的角色。"""
+    """Use Django's separate view/add/change/delete permissions per HTTP action."""
 
     message = '没有管理用户的权限。'
 
     def has_permission(self, request, view):
         user = request.user
-        return bool(
-            user
-            and user.is_authenticated
-            and (user.is_superuser or user.has_perm('auth.view_user'))
-        )
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        if request.method in SAFE_METHODS:
+            permission = 'auth.view_user'
+        elif request.method == 'POST':
+            permission = 'auth.add_user'
+        elif request.method in ('PUT', 'PATCH'):
+            permission = 'auth.change_user'
+        elif request.method == 'DELETE':
+            permission = 'auth.delete_user'
+        else:
+            return False
+        return user.has_perm(permission)
+
+    def has_object_permission(self, request, view, obj):
+        if getattr(obj, 'is_superuser', False) and not request.user.is_superuser:
+            return False
+        return self.has_permission(request, view)
 
 
 class IsSelfOrStaff(BasePermission):

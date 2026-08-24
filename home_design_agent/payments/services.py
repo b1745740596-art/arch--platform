@@ -191,6 +191,8 @@ def mark_order_paid(order: PaymentOrder, reference: str = '', raw=None) -> Payme
         order = PaymentOrder.objects.select_for_update().get(pk=order.pk)
         if order.status == PaymentOrder.Status.PAID:
             return order
+        if order.status != PaymentOrder.Status.PENDING:
+            raise ValueError('仅待支付订单可以入账。')
 
         profile = _lock_profile(order.user)
         profile.purchased_credits += order.credits
@@ -220,15 +222,18 @@ def mark_order_paid(order: PaymentOrder, reference: str = '', raw=None) -> Payme
 def resolve_webhook(provider_name: str, request):
     """解析渠道回调并尝试入账。返回 (order, handled, success)。"""
     provider = get_provider(provider_name)
-    order_no, success, reference, raw = provider.webhook(request)
-    if not order_no:
+    payment = provider.webhook(request)
+    if not payment.order_no:
         return None, False, False
-    order = PaymentOrder.objects.filter(order_no=order_no).first()
+    order = PaymentOrder.objects.filter(order_no=payment.order_no).first()
     if order is None:
         return None, True, False
-    if success:
-        mark_order_paid(order, reference=reference, raw=raw)
-    return order, True, success
+    if order.provider != provider_name:
+        raise ValueError('支付回调渠道与订单不一致。')
+    if payment.success:
+        provider.validate_webhook_order(order, payment)
+        mark_order_paid(order, reference=payment.reference, raw=payment.raw)
+    return order, True, payment.success
 
 
 def _revenue_group(queryset):

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, authentication_classes, permission_classes
@@ -105,7 +106,7 @@ class PaymentOrderViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=['post'])
     def mock_pay(self, request, pk=None):
         """本地联调：模拟支付成功，仅在 PAYMENT_MODE=mock 时开放。"""
-        if settings.PAYMENT_MODE == 'live':
+        if not settings.DEBUG or settings.PAYMENT_MODE != 'mock':
             raise NotFound()
         order = self.get_object()
         order = mark_order_paid(order, reference=f'mock-{order.order_no}')
@@ -175,7 +176,13 @@ class AdminMarkPaidView(APIView):
             raise NotFound('订单不存在。')
         if order.status == PaymentOrder.Status.PAID:
             raise ValidationError('该订单已支付。')
-        order = mark_order_paid(order, reference=request.data.get('reference', '') or 'manual')
+        try:
+            order = mark_order_paid(
+                order,
+                reference=request.data.get('reference', '') or 'manual',
+            )
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
         return Response(PaymentOrderSerializer(order).data)
 
 
@@ -271,5 +278,5 @@ def alipay_webhook(request):
     try:
         order, handled, success = resolve_webhook('alipay', request)
     except ValueError:
-        return Response('failure', content_type='text/plain', status=400)
-    return Response('success', content_type='text/plain')
+        return HttpResponse('failure', content_type='text/plain', status=400)
+    return HttpResponse('success', content_type='text/plain')

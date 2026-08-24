@@ -525,6 +525,14 @@ class CustomerRequirement(TimestampedModel):
         CONTACTED = 'contacted', '已联系'
         CLOSED = 'closed', '已关闭'
 
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name='customer_requirements',
+        verbose_name='关联用户',
+        null=True,
+        blank=True,
+    )
     name = models.CharField('姓名', max_length=50)
     phone = models.CharField('手机号', max_length=20, db_index=True)
     city = models.CharField('城市', max_length=50, blank=True)

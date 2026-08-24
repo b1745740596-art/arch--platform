@@ -88,6 +88,32 @@ paymentsClient.interceptors.response.use(
   (err) => Promise.reject(err),
 )
 
+// 谈单机器人独立实例：/api/talkbot
+const talkbotClient = axios.create({
+  baseURL: '/api/talkbot',
+  timeout: 120000,
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
+  withCredentials: true,
+})
+
+talkbotClient.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toLowerCase()
+  if (!['get', 'head', 'options', 'trace'].includes(method)) {
+    const token = readCookie('csrftoken')
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers['X-CSRFToken'] = token
+    }
+  }
+  return config
+})
+
+talkbotClient.interceptors.response.use(
+  (res) => res.data,
+  (err) => Promise.reject(err),
+)
+
 export const api = {
   health: () => client.get('/health/'),
   appVersion: () => client.get('/app-version/'),
@@ -137,6 +163,19 @@ export const api = {
   getReport: (id) => client.get(`/reports/${id}/`),
   createOrder: (data) => client.post('/orders/', data),
   listOrders: () => client.get('/orders/'),
+  // 谈单机器人
+  listTalkSessions: () => talkbotClient.get('/sessions/'),
+  createTalkSession: () => talkbotClient.post('/sessions/', {}),
+  getTalkSession: (id) => talkbotClient.get(`/sessions/${id}/`),
+  sendTalkMessage: (id, content, clientMessageId) =>
+    talkbotClient.post(`/sessions/${id}/messages/`, {
+      content,
+      client_message_id: clientMessageId,
+    }),
+  getTalkProfile: (id) => talkbotClient.get(`/sessions/${id}/profile/`),
+  convertTalkSession: (id, consent = true) =>
+    talkbotClient.post(`/sessions/${id}/convert/`, { consent }),
+  closeTalkSession: (id) => talkbotClient.post(`/sessions/${id}/close/`, {}),
   // 用户端账号
   register: (data) => client.post('/auth/register/', data),
   login: (data) => client.post('/auth/login/', data),

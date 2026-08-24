@@ -16,6 +16,16 @@ services:
       timeout: 5s
       retries: 10
 
+  cache:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '128mb', '--maxmemory-policy', 'allkeys-lru']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   web:
     build:
       context: .
@@ -23,22 +33,31 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      cache:
+        condition: service_healthy
     environment:
       DJANGO_DEBUG: 'false'
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY 必填}
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_HEALTHCHECK_HOST: ${DJANGO_HEALTHCHECK_HOST:-plankeai-home.com}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
-      DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-false}
-      DJANGO_SECURE_COOKIES: ${DJANGO_SECURE_COOKIES:-false}
+      # 此 Compose 文件仅用于生产，HTTPS 与 Secure Cookie 强制开启。
+      DJANGO_SECURE_SSL_REDIRECT: 'true'
+      DJANGO_SECURE_COOKIES: 'true'
+      DJANGO_SECURE_HSTS_SECONDS: ${DJANGO_SECURE_HSTS_SECONDS:-86400}
+      DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: ${DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS:-true}
+      DJANGO_SECURE_HSTS_PRELOAD: ${DJANGO_SECURE_HSTS_PRELOAD:-false}
+      DJANGO_CACHE_BACKEND: ${DJANGO_CACHE_BACKEND:-django.core.cache.backends.redis.RedisCache}
+      DJANGO_CACHE_LOCATION: ${DJANGO_CACHE_LOCATION:-redis://cache:6379/1}
+      DJANGO_NUM_PROXIES: ${DJANGO_NUM_PROXIES:-2}
       DATABASE_URL: postgres://${POSTGRES_USER:-home_design}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-home_design}
-      # 有 nginx 时保持 false，由 nginx 直发 /media/
-      DJANGO_SERVE_MEDIA: ${DJANGO_SERVE_MEDIA:-false}
       SEED_ON_START: ${SEED_ON_START:-0}
       DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-}
       DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-}
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@example.com}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
       GUNICORN_THREADS: ${GUNICORN_THREADS:-8}
+      TALKBOT_LLM_ENABLED: ${TALKBOT_LLM_ENABLED:-false}
       # ---- 支付与额度（上线时按 .env.example 配置）----
       PAYMENT_MODE: ${PAYMENT_MODE:-live}
       PAYMENT_FREE_CREDITS: ${PAYMENT_FREE_CREDITS:-5}
@@ -49,6 +68,18 @@ services:
       PAYMENT_STRIPE_EXCHANGE_RATE: ${PAYMENT_STRIPE_EXCHANGE_RATE:-1.09}
       PAYMENT_STRIPE_TAX_CODE: ${PAYMENT_STRIPE_TAX_CODE:-txcd_10000000}
       PAYMENT_STRIPE_API_VERSION: ${PAYMENT_STRIPE_API_VERSION:-2025-03-31.basil}
+      PAYMENT_WECHAT_APP_ID: ${PAYMENT_WECHAT_APP_ID:-}
+      PAYMENT_WECHAT_MCH_ID: ${PAYMENT_WECHAT_MCH_ID:-}
+      PAYMENT_WECHAT_SERIAL_NO: ${PAYMENT_WECHAT_SERIAL_NO:-}
+      PAYMENT_WECHAT_PRIVATE_KEY: ${PAYMENT_WECHAT_PRIVATE_KEY:-}
+      PAYMENT_WECHAT_API_V3_KEY: ${PAYMENT_WECHAT_API_V3_KEY:-}
+      PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY: ${PAYMENT_WECHAT_PLATFORM_PUBLIC_KEY:-}
+      PAYMENT_WECHAT_NOTIFY_URL: ${PAYMENT_WECHAT_NOTIFY_URL:-}
+      PAYMENT_ALIPAY_APP_ID: ${PAYMENT_ALIPAY_APP_ID:-}
+      PAYMENT_ALIPAY_PRIVATE_KEY: ${PAYMENT_ALIPAY_PRIVATE_KEY:-}
+      PAYMENT_ALIPAY_PUBLIC_KEY: ${PAYMENT_ALIPAY_PUBLIC_KEY:-}
+      PAYMENT_ALIPAY_SELLER_ID: ${PAYMENT_ALIPAY_SELLER_ID:-}
+      PAYMENT_ALIPAY_NOTIFY_URL: ${PAYMENT_ALIPAY_NOTIFY_URL:-}
       # ---- 邮件 / 密码重置 ----
       DJANGO_EMAIL_BACKEND: ${DJANGO_EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
       DJANGO_EMAIL_HOST: ${DJANGO_EMAIL_HOST:-}
@@ -60,7 +91,7 @@ services:
       DJANGO_DEFAULT_FROM_EMAIL: ${DJANGO_DEFAULT_FROM_EMAIL:-noreply@example.com}
       DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES: ${DJANGO_PASSWORD_RESET_TIMEOUT_MINUTES:-30}
       # ---- 短信 / 邮箱验证码 ----
-      SMS_BACKEND: ${SMS_BACKEND:-console}
+      SMS_BACKEND: ${SMS_BACKEND:-webhook}
       SMS_WEBHOOK_URL: ${SMS_WEBHOOK_URL:-}
       SMS_CODE_TTL_MINUTES: ${SMS_CODE_TTL_MINUTES:-5}
       SMS_MAX_ATTEMPTS: ${SMS_MAX_ATTEMPTS:-5}

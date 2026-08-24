@@ -254,6 +254,7 @@ async function combineAndOrder() {
     })
 
     await api.createOrder({
+      consent: true,
       project: projectId,
       report: saved.id,
       title: payload.title,
@@ -290,6 +291,7 @@ async function placeOrder() {
   try {
     const data = report.report || {}
     await api.createOrder({
+      consent: true,
       project: report.project,
       report: report.id,
       title: report.title || data.title,

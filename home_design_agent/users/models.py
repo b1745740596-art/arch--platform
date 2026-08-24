@@ -3,6 +3,7 @@ import secrets
 
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 
@@ -28,6 +29,10 @@ class UserProfile(models.Model):
     )
     timezone = models.CharField('时区', max_length=50, default='Asia/Shanghai')
     email_verified = models.BooleanField('邮箱已验证', default=False)
+    verified_email = models.EmailField(
+        '已验证邮箱标识', max_length=254, blank=True,
+        help_text='仅在验证码校验成功后写入，用于唯一登录身份匹配。',
+    )
     free_credits = models.PositiveIntegerField(
         '免费生成额度', default=5,
         help_text='每位用户一次性赠送的免费生成次数，消耗完毕后开始使用充值额度',
@@ -42,6 +47,16 @@ class UserProfile(models.Model):
     class Meta:
         verbose_name = verbose_name_plural = '用户资料'
         ordering = ('-created_at',)
+        constraints = [
+            models.UniqueConstraint(
+                fields=('phone',), condition=~Q(phone=''), name='users_unique_bound_phone',
+            ),
+            models.UniqueConstraint(
+                fields=('verified_email',),
+                condition=~Q(verified_email=''),
+                name='users_unique_verified_email',
+            ),
+        ]
 
     def __str__(self):
         return self.display_name or self.user.get_username()

@@ -3,7 +3,9 @@ import secrets
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
 
 from .models import (
@@ -15,6 +17,12 @@ from .models import (
 from .sms import send_sms_code
 
 PHONE_RE = re.compile(r'^1[3-9]\d{9}$')
+
+
+def _ensure_email_delivery_is_private():
+    backend = getattr(settings, 'EMAIL_BACKEND', '')
+    if not settings.DEBUG and backend.endswith('console.EmailBackend'):
+        raise ImproperlyConfigured('生产环境禁止使用 console 邮件后端。')
 
 
 def create_password_reset_token(user):
@@ -35,9 +43,10 @@ def create_password_reset_token(user):
     return raw_token
 
 
+@transaction.atomic
 def consume_password_reset_token(user, raw_token):
     """校验并消耗令牌；无效/过期返回 None。"""
-    token = PasswordResetToken.objects.filter(
+    token = PasswordResetToken.objects.select_for_update().filter(
         user=user,
         token_hash=PasswordResetToken.hash_token(raw_token),
         used_at__isnull=True,
@@ -56,6 +65,7 @@ def build_password_reset_url(request, user, raw_token):
 
 
 def send_password_reset_email(user, raw_token, reset_url):
+    _ensure_email_delivery_is_private()
     subject = '重置你的 Arch_AI 账号密码'
     message = (
         f'你好，{user.get_username()}：\n\n'
@@ -106,9 +116,10 @@ def create_sms_code(phone, purpose):
     return raw_code
 
 
+@transaction.atomic
 def verify_sms_code(phone, purpose, raw_code):
     """校验验证码，返回 (记录, 错误信息)；校验成功会消耗验证码。"""
-    record = SmsVerificationCode.objects.filter(
+    record = SmsVerificationCode.objects.select_for_update().filter(
         phone=phone,
         purpose=purpose,
         used_at__isnull=True,
@@ -132,6 +143,7 @@ def verify_sms_code(phone, purpose, raw_code):
 
 
 def send_email_verification_code(email, raw_code):
+    _ensure_email_delivery_is_private()
     subject = '你的 Arch_AI 邮箱验证码'
     ttl = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 5)
     message = (
@@ -169,9 +181,10 @@ def create_email_code(email, purpose):
     return raw_code
 
 
+@transaction.atomic
 def verify_email_code(email, purpose, raw_code):
     """校验邮箱验证码，返回 (记录, 错误信息)；校验成功会消耗验证码。"""
-    record = EmailVerificationCode.objects.filter(
+    record = EmailVerificationCode.objects.select_for_update().filter(
         email=email,
         purpose=purpose,
         used_at__isnull=True,

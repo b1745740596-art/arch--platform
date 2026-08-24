@@ -8,6 +8,7 @@ const { t } = useI18n()
 const formRef = ref()
 const submitting = ref(false)
 const loadingOptions = ref(true)
+const verifiedPhone = ref('')
 
 const form = reactive({
   name: '',
@@ -28,8 +29,10 @@ const options = reactive({
 
 const phoneRule = {
   validator: (rule, value, callback) => {
+    if (!verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneBindRequired')))
     if (!value) return callback(new Error(t('requirement.rules.phoneRequired')))
     if (!/^1[3-9]\d{9}$/.test(value)) return callback(new Error(t('requirement.rules.phoneInvalid')))
+    if (value !== verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneMismatch')))
     callback()
   },
   trigger: 'blur',
@@ -51,7 +54,22 @@ async function loadOptions() {
     loadingOptions.value = false
   }
 }
-onMounted(loadOptions)
+
+async function loadProfile() {
+  try {
+    const profile = await api.getProfile()
+    verifiedPhone.value = profile?.phone || ''
+    if (verifiedPhone.value) form.phone = verifiedPhone.value
+    if (!form.name && profile?.display_name) form.name = profile.display_name
+  } catch {
+    verifiedPhone.value = ''
+  }
+}
+
+onMounted(() => {
+  loadOptions()
+  loadProfile()
+})
 
 async function submit() {
   await formRef.value.validate()
@@ -74,6 +92,7 @@ async function submit() {
     })
     ElMessage.success(t('requirement.submitted'))
     formRef.value.resetFields()
+    form.phone = verifiedPhone.value
     form.budget_min = null
     form.budget_max = null
   } catch (e) {
@@ -103,7 +122,19 @@ async function submit() {
       </el-form-item>
 
       <el-form-item :label="t('requirement.phone')" prop="phone">
-        <el-input v-model="form.phone" maxlength="11" :placeholder="t('requirement.phonePlaceholder')" />
+        <div class="phone-field">
+          <el-input
+            v-model="form.phone"
+            maxlength="11"
+            :disabled="Boolean(verifiedPhone)"
+            :placeholder="t('requirement.phonePlaceholder')"
+          />
+          <small v-if="verifiedPhone">{{ t('requirement.phoneVerified') }}</small>
+          <small v-else>
+            {{ t('requirement.phoneBindRequired') }}
+            <router-link to="/account">{{ t('requirement.bindNow') }}</router-link>
+          </small>
+        </div>
       </el-form-item>
 
       <el-form-item :label="t('requirement.city')">
@@ -155,4 +186,7 @@ async function submit() {
 <style scoped>
 .hd { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .sub { color: var(--el-text-color-secondary); margin: 0 0 18px; }
+.phone-field { width: 100%; }
+.phone-field small { display: block; margin-top: 4px; color: var(--el-text-color-secondary); line-height: 1.4; }
+.phone-field a { margin-left: 4px; color: var(--el-color-primary); }
 </style>

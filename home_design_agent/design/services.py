@@ -45,14 +45,17 @@ _STYLE_PRESETS = [
 def build_preview_schemes(project: Project) -> list[DesignScheme]:
     """基于项目生成 3 套预方案并落库，返回创建的对象列表。"""
     area = float(project.area) if project.area else 90.0
+    desired_style = ''
+    if isinstance(project.requirement_summary, dict):
+        desired_style = str(project.requirement_summary.get('style') or '').strip()
     schemes = []
     for preset in _STYLE_PRESETS:
         budget_min = int(area * preset['unit_low'])
         budget_max = int(area * preset['unit_high'])
         scheme = DesignScheme.objects.create(
             project=project,
-            name=preset['name'],
-            style=preset['style'],
+            name=f'{desired_style}·{preset["name"]}' if desired_style else preset['name'],
+            style=desired_style or preset['style'],
             budget_tier=preset['tier'],
             layout=preset['layout'],
             highlights=preset['highlights'],

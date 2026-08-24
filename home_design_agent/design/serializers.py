@@ -3,6 +3,8 @@ import re
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from config.privacy import contains_sensitive_personal_data
+
 from .models import (
     CustomerRequirement,
     Designer,
@@ -31,12 +33,6 @@ from .prompts import (
 )
 
 # 输入内容风控：联系方式 / 链接 / 注入字符
-SENSITIVE_CONTACT_RE = re.compile(
-    r'(1[3-9]\d{9})'                      # 手机号
-    r'|([\w.+-]+@[\w-]+\.[\w.]+)'         # 邮箱
-    r'|(\d{17}[\dXx])'                    # 身份证
-    r'|(\d{3,4}-?\d{7,8})'                # 固话
-)
 URL_RE = re.compile(r'(https?://|www\.)', re.IGNORECASE)
 INJECTION_RE = re.compile(r'[<>{}]')
 
@@ -57,7 +53,7 @@ def _image_dimensions(value):
 
         pointer = value.tell() if hasattr(value, 'tell') else 0
         value.seek(0)
-        with Image.open(value) as img:
+        with Image.open(value, formats=('JPEG', 'PNG', 'WEBP', 'HEIF')) as img:
             size = img.size
         value.seek(pointer)
         return size
@@ -91,6 +87,7 @@ class ProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = Project
         fields = '__all__'
+        read_only_fields = ('user', 'status')
 
 
 class ProjectListSerializer(serializers.ModelSerializer):
@@ -127,6 +124,7 @@ class HomeOrderSerializer(serializers.ModelSerializer):
     """「我的家」项目订单：下单即创建，状态由后端管理。"""
 
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    consent = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = HomeOrder
@@ -151,6 +149,7 @@ class HomeOrderSerializer(serializers.ModelSerializer):
 
 class LeadSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    consent = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
         model = Lead
@@ -164,7 +163,7 @@ class CustomerRequirementSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerRequirement
         fields = '__all__'
-        read_only_fields = ('status',)
+        read_only_fields = ('status', 'user')
 
     def validate_phone(self, value):
         value = (value or '').strip()
@@ -330,8 +329,10 @@ class RenderJobSerializer(serializers.ModelSerializer):
         if len(text) > REQUIREMENT_MAX_LENGTH:
             raise serializers.ValidationError(
                 f'需求描述不能超过 {REQUIREMENT_MAX_LENGTH} 个字符。')
-        if SENSITIVE_CONTACT_RE.search(text):
-            raise serializers.ValidationError('需求描述中请勿填写手机号、邮箱、身份证等个人信息。')
+        if contains_sensitive_personal_data(text):
+            raise serializers.ValidationError(
+                '需求描述中请勿填写姓名、联系方式、证件号或详细地址等个人信息。'
+            )
         if URL_RE.search(text):
             raise serializers.ValidationError('需求描述中请勿填写链接。')
         if INJECTION_RE.search(text):
