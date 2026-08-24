@@ -1,13 +1,17 @@
-"""Optional OpenAI-compatible response generation for TalkBot."""
+"""DeepSeek text generation for TalkBot with deterministic fallback."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from django.conf import settings
 
 from config.privacy import redact_sensitive_text
-from design.models import GenerationConfig
+
+
+DEFAULT_DEEPSEEK_API_BASE = 'https://api.deepseek.com'
+DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash'
 
 
 @dataclass(frozen=True)
@@ -15,6 +19,43 @@ class GenerationResult:
     content: str | None
     status: str
     error: str = ''
+
+
+@dataclass(frozen=True)
+class DeepSeekConfig:
+    enabled: bool
+    api_key: str
+    api_base: str
+    model: str
+    timeout: float
+    max_retries: int
+
+    @property
+    def configured(self) -> bool:
+        endpoint = urlparse(self.api_base)
+        safe_endpoint = (
+            endpoint.scheme == 'https'
+            and bool(endpoint.hostname)
+            and not endpoint.username
+            and not endpoint.password
+            and not endpoint.query
+            and not endpoint.fragment
+        )
+        return bool(self.api_key and self.model and safe_endpoint)
+
+
+def load_deepseek_config() -> DeepSeekConfig:
+    """Load provider secrets from the process environment via Django settings."""
+    timeout = max(3.0, min(float(settings.DEEPSEEK_TIMEOUT_SECONDS), 60.0))
+    max_retries = max(0, min(int(settings.DEEPSEEK_MAX_RETRIES), 2))
+    return DeepSeekConfig(
+        enabled=settings.TALKBOT_LLM_ENABLED,
+        api_key=(settings.DEEPSEEK_API_KEY or '').strip(),
+        api_base=(settings.DEEPSEEK_API_BASE or DEFAULT_DEEPSEEK_API_BASE).rstrip('/'),
+        model=(settings.DEEPSEEK_MODEL or DEFAULT_DEEPSEEK_MODEL).strip(),
+        timeout=timeout,
+        max_retries=max_retries,
+    )
 
 
 # Kept for compatibility with integrations that imported the earlier helper.
@@ -27,20 +68,20 @@ def generate_reply(
     strategy: dict,
     knowledge: list[dict],
 ) -> GenerationResult:
-    """Generate through the optional model and expose a safe fallback reason."""
-    if not settings.TALKBOT_LLM_ENABLED:
+    """Generate through DeepSeek and expose only a safe fallback reason."""
+    config = load_deepseek_config()
+    if not config.enabled:
         return GenerationResult(None, 'disabled')
-    config = GenerationConfig.load()
-    if not config.enabled or not config.api_key:
-        return GenerationResult(None, 'disabled')
+    if not config.configured:
+        return GenerationResult(None, 'misconfigured')
     try:
         from openai import OpenAI
 
         client = OpenAI(
             api_key=config.api_key,
-            base_url=config.api_base or None,
-            timeout=25.0,
-            max_retries=1,
+            base_url=config.api_base,
+            timeout=config.timeout,
+            max_retries=config.max_retries,
         )
         history = [
             {'role': message.role, 'content': redact_sensitive_text(message.content)}
@@ -63,7 +104,7 @@ def generate_reply(
 可引用资料：
 {knowledge_text}'''
         response = client.chat.completions.create(
-            model=config.model or 'deepseek-chat',
+            model=config.model,
             messages=[{'role': 'system', 'content': system}, *history],
             temperature=0.55,
             max_tokens=350,

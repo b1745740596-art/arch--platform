@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from design.serializers import HomeOrderSerializer
 
 from .engine import convert_conversation, create_conversation, process_message
+from .llm import load_deepseek_config
 from .models import Conversation, KnowledgeDocument, Message, TalkWorkflow
 from .serializers import (
     ConversationListSerializer,
@@ -31,6 +32,7 @@ from .throttles import (
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def health(request):
+    deepseek = load_deepseek_config()
     cache_ready = False
     try:
         cache.set('talkbot:health', 'ok', timeout=10)
@@ -43,8 +45,13 @@ def health(request):
         'workflow_ready': TalkWorkflow.objects.filter(is_active=True).exists(),
         'knowledge_ready': KnowledgeDocument.objects.filter(is_active=True, base__is_active=True).exists(),
         'cache_ready': cache_ready,
+        'llm_provider': 'deepseek',
+        'llm_enabled': deepseek.enabled,
+        'llm_configured': deepseek.configured,
+        'llm_model': deepseek.model,
     }
-    ready = payload['workflow_ready'] and payload['knowledge_ready'] and cache_ready
+    llm_ready = not deepseek.enabled or deepseek.configured
+    ready = payload['workflow_ready'] and payload['knowledge_ready'] and cache_ready and llm_ready
     payload['ready'] = ready
     if not ready:
         payload['status'] = 'degraded'

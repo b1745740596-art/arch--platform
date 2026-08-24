@@ -68,6 +68,18 @@ curl -fsS https://plankeai-home.com/api/talkbot/health/
 curl -sS https://plankeai-home.com/ | grep -o 'index-[^"]*\.js' | head -1
 ```
 
+启用 DeepSeek 文本回复时，先在服务器 `.env` 或 Secret 管理器配置：
+
+```dotenv
+TALKBOT_LLM_ENABLED=true
+DEEPSEEK_API_KEY=<DeepSeek 平台生成的 Key>
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+```
+
+重建容器后，健康响应必须同时包含 `llm_enabled=true`、`llm_configured=true`、
+`llm_model=deepseek-v4-flash`。API Key 不得写进仓库、前端包或构建日志。
+
 ## 四、APK 发布流程
 
 只有涉及原生层时才需要这一步。

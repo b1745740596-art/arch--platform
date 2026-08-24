@@ -46,7 +46,7 @@ export default {
     messageInputLabel: 'Consultation message',
     placeholder: 'Tell me about your home, family, budget or concerns…',
     closedPlaceholder: 'This conversation has ended. Start a new one.',
-    privacy: 'Sensitive details are used only for this request and delivery. AI advice does not replace on-site measurement, a formal quote or a contract.',
+    privacy: 'Messages are redacted before DeepSeek generates a reply. Sensitive details are used only for this request and delivery; AI advice does not replace an on-site measurement, formal quote or contract.',
     readyTitle: 'Your key details are ready',
     readyHint: 'We will create three preview schemes and a pending order. The final quote requires an on-site measurement.',
     createOrder: 'Create scheme order',

@@ -46,7 +46,7 @@ export default {
     messageInputLabel: '咨询消息',
     placeholder: '说说你的房子、家人、预算或顾虑…',
     closedPlaceholder: '本次对话已结束，请新建对话',
-    privacy: '敏感信息仅用于本次需求与履约；AI 建议不替代正式量房、报价和合同。',
+    privacy: '消息会先脱敏再交由 DeepSeek 生成回复；敏感信息仅用于本次需求与履约，AI 建议不替代正式量房、报价和合同。',
     readyTitle: '关键信息已齐，可以生成项目订单',
     readyHint: '将生成三档预方案与待确认订单，正式报价以现场量房为准。',
     createOrder: '生成方案订单',

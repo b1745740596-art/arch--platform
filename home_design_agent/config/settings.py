@@ -262,6 +262,11 @@ REST_FRAMEWORK = {
 # TalkBot ships in deterministic rule mode. Enable the external text model only
 # after the production knowledge base and provider configuration are verified.
 TALKBOT_LLM_ENABLED = env.bool('TALKBOT_LLM_ENABLED', default=False)
+DEEPSEEK_API_KEY = env('DEEPSEEK_API_KEY', default='')
+DEEPSEEK_API_BASE = env('DEEPSEEK_API_BASE', default='https://api.deepseek.com')
+DEEPSEEK_MODEL = env('DEEPSEEK_MODEL', default='deepseek-v4-flash')
+DEEPSEEK_TIMEOUT_SECONDS = env.float('DEEPSEEK_TIMEOUT_SECONDS', default=25.0)
+DEEPSEEK_MAX_RETRIES = env.int('DEEPSEEK_MAX_RETRIES', default=1)
 
 # ---- 用户系统 ----
 # 开发默认打印到控制台；生产在 .env 配置 SMTP（见 .env.example）。

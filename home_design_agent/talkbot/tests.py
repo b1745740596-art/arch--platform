@@ -1,7 +1,9 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -11,7 +13,7 @@ from users.models import UserProfile
 from .models import Conversation, CustomerProfile, KnowledgeDocument, Message, TalkStep
 from .engine import TurnContext, _numeric_facts, _safe_reply
 from .empathy import extract_profile_updates
-from .llm import redact_sensitive_text
+from .llm import generate_reply, load_deepseek_config, redact_sensitive_text
 from .psychology import analyze
 from .rag import retrieve
 from .throttles import TalkBotIPThrottle
@@ -63,6 +65,7 @@ class TalkBotApiTests(APITestCase):
         response = self.client.get(SESSIONS_URL)
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
     def test_public_health_reports_seeded_runtime(self):
         response = self.client.get('/api/talkbot/health/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -70,7 +73,20 @@ class TalkBotApiTests(APITestCase):
         self.assertTrue(response.data['workflow_ready'])
         self.assertTrue(response.data['knowledge_ready'])
         self.assertTrue(response.data['cache_ready'])
+        self.assertEqual(response.data['llm_provider'], 'deepseek')
+        self.assertFalse(response.data['llm_enabled'])
+        self.assertFalse(response.data['llm_configured'])
+        self.assertEqual(response.data['llm_model'], 'deepseek-v4-flash')
         self.assertTrue(response.data['ready'])
+
+    @override_settings(TALKBOT_LLM_ENABLED=True, DEEPSEEK_API_KEY='')
+    def test_public_health_rejects_enabled_but_unconfigured_deepseek(self):
+        response = self.client.get('/api/talkbot/health/')
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+        self.assertEqual(response.data['status'], 'degraded')
+        self.assertTrue(response.data['llm_enabled'])
+        self.assertFalse(response.data['llm_configured'])
+        self.assertFalse(response.data['ready'])
 
     def test_create_session_has_welcome_and_profile(self):
         response = self.create_session()
@@ -479,6 +495,103 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(response.data['conversation']['status'], Conversation.Status.CLOSED)
         self.assertEqual(response.data['conversation']['last_action'], 'stop')
         self.assertIn('不会根据这次对话联系', response.data['message']['content'])
+
+
+class DeepSeekLLMTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='deepseek-user', password='secret123')
+        self.conversation = Conversation.objects.create(user=self.user, stage='discovery')
+        self.profile = CustomerProfile.objects.create(
+            conversation=self.conversation,
+            city='上海',
+            style='现代简约',
+            household='一家三口',
+        )
+        Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.USER,
+            content='我的手机号是13800138000，想先了解环保材料。',
+        )
+
+    @override_settings(TALKBOT_LLM_ENABLED=False)
+    def test_disabled_model_uses_rule_fallback_without_loading_client(self):
+        result = generate_reply(self.conversation, self.profile, {}, [])
+        self.assertEqual(result.status, 'disabled')
+        self.assertIsNone(result.content)
+
+    @override_settings(TALKBOT_LLM_ENABLED=True, DEEPSEEK_API_KEY='')
+    def test_enabled_model_without_api_key_is_misconfigured(self):
+        result = generate_reply(self.conversation, self.profile, {}, [])
+        self.assertEqual(result.status, 'misconfigured')
+        self.assertIsNone(result.content)
+
+    @override_settings(
+        TALKBOT_LLM_ENABLED=True,
+        DEEPSEEK_API_KEY='test-deepseek-key',
+        DEEPSEEK_API_BASE='http://api.deepseek.com',
+    )
+    @patch('openai.OpenAI')
+    def test_insecure_deepseek_endpoint_is_rejected_before_key_transmission(self, mocked_openai):
+        result = generate_reply(self.conversation, self.profile, {}, [])
+        self.assertEqual(result.status, 'misconfigured')
+        self.assertIsNone(result.content)
+        mocked_openai.assert_not_called()
+
+    @override_settings(
+        TALKBOT_LLM_ENABLED=True,
+        DEEPSEEK_API_KEY='test-deepseek-key',
+        DEEPSEEK_API_BASE='https://api.deepseek.com/',
+        DEEPSEEK_MODEL='deepseek-v4-flash',
+        DEEPSEEK_TIMEOUT_SECONDS=12,
+        DEEPSEEK_MAX_RETRIES=1,
+    )
+    @patch('openai.OpenAI')
+    def test_deepseek_chat_completion_uses_official_endpoint_and_redacted_history(
+        self, mocked_openai,
+    ):
+        mocked_openai.return_value.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='可以先核对材料证明和检测方案。'))],
+        )
+
+        result = generate_reply(
+            self.conversation,
+            self.profile,
+            {'strategy': '建立信任', 'action': 'explain', 'question_label': '环保顾虑'},
+            [{'source': '工艺', 'title': '环保', 'content': '以材料证明和检测结果为准。'}],
+        )
+
+        self.assertEqual(result.status, 'success')
+        self.assertEqual(result.content, '可以先核对材料证明和检测方案。')
+        mocked_openai.assert_called_once_with(
+            api_key='test-deepseek-key',
+            base_url='https://api.deepseek.com',
+            timeout=12.0,
+            max_retries=1,
+        )
+        request = mocked_openai.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(request['model'], 'deepseek-v4-flash')
+        self.assertFalse(request['stream'])
+        self.assertNotIn('13800138000', str(request['messages']))
+
+    @override_settings(
+        TALKBOT_LLM_ENABLED=True,
+        DEEPSEEK_API_KEY='test-deepseek-key',
+        DEEPSEEK_TIMEOUT_SECONDS=999,
+        DEEPSEEK_MAX_RETRIES=99,
+    )
+    def test_deepseek_runtime_limits_are_bounded(self):
+        config = load_deepseek_config()
+        self.assertEqual(config.timeout, 60.0)
+        self.assertEqual(config.max_retries, 2)
+
+    @override_settings(TALKBOT_LLM_ENABLED=True, DEEPSEEK_API_KEY='test-deepseek-key')
+    @patch('openai.OpenAI', side_effect=TimeoutError('provider unavailable'))
+    def test_deepseek_outage_returns_safe_rule_fallback_signal(self, mocked_openai):
+        result = generate_reply(self.conversation, self.profile, {}, [])
+        self.assertEqual(result.status, 'unavailable')
+        self.assertEqual(result.error, 'TimeoutError')
+        self.assertIsNone(result.content)
+        mocked_openai.assert_called_once()
 
 
 class ProfileExtractionTests(APITestCase):
