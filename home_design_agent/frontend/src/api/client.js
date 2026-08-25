@@ -182,6 +182,7 @@ export const api = {
   logout: () => client.post('/auth/logout/'),
   getMe: () => client.get('/auth/me/'),
   // 用户系统：个人资料 / 密码
+  getVerificationConfig: () => usersClient.get('/verification-config/'),
   getProfile: () => usersClient.get('/me/'),
   updateProfile: (data) => usersClient.patch('/me/', data),
   changePassword: (data) => usersClient.post('/change-password/', data),

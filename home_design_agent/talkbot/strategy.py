@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from users.models import VerificationConfig
+
 from .models import Conversation
 
 
@@ -20,6 +22,7 @@ FIELD_LABELS = {
     'name': '称呼',
     'phone': '联系电话',
     'verified_phone': '账号已验证手机号',
+    'verified_email': '账号已验证邮箱',
 }
 
 
@@ -39,13 +42,22 @@ def conversion_missing(profile) -> list[str]:
     """Information needed to create an actionable project order."""
     required = ('city', 'area', 'style', 'budget_max', 'desired_timeline', 'name', 'phone')
     missing = [field for field in required if getattr(profile, field, None) in (None, '')]
-    if profile.phone:
+    verification_config = VerificationConfig.load()
+    account_profile = None
+    try:
+        account_profile = profile.conversation.user.profile
+    except Exception:  # noqa: BLE001 - legacy users may not have a profile yet
+        pass
+    if verification_config.phone_required_for_order and profile.phone:
         try:
-            bound_phone = profile.conversation.user.profile.phone or ''
+            bound_phone = account_profile.phone or ''
         except Exception:  # noqa: BLE001 - legacy users may not have a profile yet
             bound_phone = ''
         if not bound_phone or bound_phone != profile.phone:
             missing.append('verified_phone')
+    if verification_config.email_required_for_order:
+        if not account_profile or not account_profile.email_verified:
+            missing.append('verified_email')
     return missing
 
 

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { api } from '@/api/client'
 import { useAccountStore } from '@/stores/account'
 import { isNativeApp } from '@/utils/app'
 
@@ -14,6 +15,10 @@ const profileRef = ref()
 const passwordRef = ref()
 const savingProfile = ref(false)
 const savingPassword = ref(false)
+const verificationConfig = reactive({
+  phone_verification_enabled: false,
+  email_verification_enabled: false,
+})
 
 const totalCredits = computed(
   () => (account.profile?.free_credits || 0) + (account.profile?.purchased_credits || 0),
@@ -203,7 +208,11 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
-  const data = await account.fetchProfile(true)
+  const [data, config] = await Promise.all([
+    account.fetchProfile(true),
+    api.getVerificationConfig().catch(() => null),
+  ])
+  if (config) Object.assign(verificationConfig, config)
   if (data) {
     profileForm.display_name = data.display_name || ''
     profileForm.bio = data.bio || ''
@@ -296,7 +305,7 @@ async function submitPassword() {
       </el-form>
     </el-card>
 
-    <el-card shadow="never" style="margin-top:16px">
+    <el-card v-if="verificationConfig.phone_verification_enabled" shadow="never" style="margin-top:16px">
       <template #header><b>{{ t('account.phoneTitle') }}</b></template>
       <el-form ref="phoneBindRef" :model="phoneBindForm" :rules="phoneBindRules" label-width="100px">
         <el-form-item :label="t('account.currentPhone')">
@@ -320,7 +329,7 @@ async function submitPassword() {
       </el-form>
     </el-card>
 
-    <el-card shadow="never" style="margin-top:16px">
+    <el-card v-if="verificationConfig.email_verification_enabled" shadow="never" style="margin-top:16px">
       <template #header><b>{{ t('account.emailTitle') }}</b></template>
       <el-form ref="emailBindRef" :model="emailBindForm" :rules="emailBindRules" label-width="100px">
         <el-form-item :label="t('account.currentEmail')">

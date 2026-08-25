@@ -6,6 +6,7 @@ from .models import (
     RememberToken,
     SmsVerificationCode,
     UserProfile,
+    VerificationConfig,
 )
 
 
@@ -18,6 +19,35 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_filter = ('locale', 'email_verified')
     search_fields = ('user__username', 'user__email', 'display_name', 'phone')
     raw_id_fields = ('user',)
+
+
+@admin.register(VerificationConfig)
+class VerificationConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        '__str__', 'phone_verification_enabled', 'email_verification_enabled',
+        'require_phone_verification_for_order', 'require_email_verification_for_order',
+        'updated_at',
+    )
+    fieldsets = (
+        ('验证功能开关', {
+            'fields': ('phone_verification_enabled', 'email_verification_enabled'),
+            'description': '关闭后，对应验证码接口会拒绝请求，前端绑定和验证码登录入口也会隐藏。',
+        }),
+        ('下单验证要求', {
+            'fields': (
+                'require_phone_verification_for_order',
+                'require_email_verification_for_order',
+            ),
+            'description': '当前两项默认关闭，因此下单无需手机号或邮箱验证；可按需独立开启。',
+        }),
+        ('基础', {'fields': ('name',)}),
+    )
+
+    def has_add_permission(self, request):
+        return not VerificationConfig.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PasswordResetToken)

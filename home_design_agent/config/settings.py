@@ -441,6 +441,7 @@ SIMPLEUI_CONFIG = {
                 {'name': '用户', 'icon': 'fas fa-user', 'url': '/admin/auth/user/'},
                 {'name': '用户组', 'icon': 'fas fa-users', 'url': '/admin/auth/group/'},
                 {'name': '用户资料', 'icon': 'fas fa-id-card', 'url': '/admin/users/userprofile/'},
+                {'name': '验证功能配置', 'icon': 'fas fa-toggle-on', 'url': '/admin/users/verificationconfig/'},
                 {'name': '重置令牌', 'icon': 'fas fa-key', 'url': '/admin/users/passwordresettoken/'},
                 {'name': '持久登录令牌', 'icon': 'fas fa-ticket-alt', 'url': '/admin/users/remembertoken/'},
                 {'name': '短信验证码', 'icon': 'fas fa-sms', 'url': '/admin/users/smsverificationcode/'},

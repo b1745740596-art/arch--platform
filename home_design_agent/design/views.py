@@ -57,6 +57,7 @@ from config.throttles import (
     DesignSalesIPThrottle,
     DesignSalesUserThrottle,
 )
+from users.models import UserProfile, VerificationConfig
 from users.services import normalize_phone
 
 
@@ -144,8 +145,15 @@ def _user_payload(user):
     }
 
 
-def _verified_contact_phone(request, submitted_phone, *, consent, field_name='customer_phone'):
-    """Bind public sales actions to the authenticated user's verified phone."""
+def _verified_contact_phone(
+    request,
+    submitted_phone,
+    *,
+    consent,
+    field_name='customer_phone',
+    require_verification=True,
+):
+    """Resolve a contact phone, optionally enforcing the verified account binding."""
     submitted_phone = normalize_phone(submitted_phone)
     if request.user.is_staff:
         return submitted_phone
@@ -155,6 +163,13 @@ def _verified_contact_phone(request, submitted_phone, *, consent, field_name='cu
         verified_phone = normalize_phone(request.user.profile.phone)
     except Exception:  # noqa: BLE001 - legacy accounts may not have a profile yet
         verified_phone = ''
+    if not require_verification:
+        if submitted_phone and UserProfile.objects.exclude(user=request.user).filter(
+            phone=submitted_phone,
+            user__is_active=True,
+        ).exists():
+            raise ValidationError({field_name: '该手机号已被其他账号绑定。'})
+        return submitted_phone or verified_phone
     if not verified_phone:
         raise ValidationError({field_name: '请先在账号设置完成短信验证绑定。'})
     if submitted_phone and submitted_phone != verified_phone:
@@ -445,11 +460,20 @@ class HomeOrderViewSet(viewsets.ModelViewSet):
             or self.request.user.get_full_name().strip()
             or self.request.user.username
         )
+        verification_config = VerificationConfig.load()
         customer_phone = _verified_contact_phone(
             self.request,
             data.get('customer_phone') or '',
             consent=consent,
+            require_verification=verification_config.phone_required_for_order,
         )
+        if not self.request.user.is_staff and verification_config.email_required_for_order:
+            try:
+                profile = self.request.user.profile
+            except Exception:  # noqa: BLE001 - legacy accounts may not have a profile yet
+                profile = None
+            if not profile or not profile.email_verified:
+                raise ValidationError({'customer_email': '请先在账号设置完成邮箱验证。'})
         title = data.get('title') or (report.title if report else project.title)
 
         order = serializer.save(
@@ -623,6 +647,7 @@ class LeadViewSet(viewsets.ModelViewSet):
             serializer.validated_data.get('contact_phone') or '',
             consent=consent,
             field_name='contact_phone',
+            require_verification=VerificationConfig.load().phone_verification_enabled,
         )
         lead = serializer.save(contact_phone=contact_phone)
         # 留资后推进项目状态（PRD 5.5 线索转化）
@@ -668,13 +693,17 @@ class CustomerRequirementViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """需求提交后同步到业主、项目与留资线索，方便后台统一跟进。"""
         phone = serializer.validated_data['phone']
-        if not self.request.user.is_staff:
+        if not self.request.user.is_staff and VerificationConfig.load().phone_verification_enabled:
             try:
                 verified_phone = self.request.user.profile.phone or ''
             except Exception:  # noqa: BLE001 - legacy accounts may not have a profile yet
                 verified_phone = ''
             if not verified_phone or phone != verified_phone:
                 raise ValidationError({'phone': '请先在账号设置完成短信验证，并使用已绑定手机号。'})
+        elif not self.request.user.is_staff and UserProfile.objects.exclude(
+            user=self.request.user,
+        ).filter(phone=phone, user__is_active=True).exists():
+            raise ValidationError({'phone': '该手机号已被其他账号绑定。'})
 
         requirement = serializer.save(user=self.request.user)
 
@@ -795,11 +824,17 @@ class RenderJobViewSet(viewsets.ModelViewSet):
         if project.user_id != self.request.user.id and not self.request.user.is_staff:
             raise PermissionDenied('不能为其他用户的项目生成效果图。')
         if not self.request.user.is_staff:
+            verification_config = VerificationConfig.load()
             try:
                 profile = self.request.user.profile
             except Exception:  # noqa: BLE001 - legacy users may not have a profile
                 profile = None
-            if not profile or not (profile.phone or profile.email_verified):
+            active_checks = []
+            if verification_config.phone_verification_enabled:
+                active_checks.append(bool(profile and profile.phone))
+            if verification_config.email_verification_enabled:
+                active_checks.append(bool(profile and profile.email_verified))
+            if active_checks and not any(active_checks):
                 raise PermissionDenied('请先验证手机号或邮箱，再使用 AI 生成功能。')
         module_codes = serializer.validated_data.pop('module_codes', '')
         deduction = consume_generation_credit(self.request.user)

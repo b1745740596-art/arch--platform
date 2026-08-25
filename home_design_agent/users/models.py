@@ -2,6 +2,7 @@ import hashlib
 import secrets
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -60,6 +61,61 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.display_name or self.user.get_username()
+
+
+class VerificationConfig(models.Model):
+    """Phone/email verification feature flags and order requirements."""
+
+    name = models.CharField('配置名', max_length=50, default='default', unique=True)
+    phone_verification_enabled = models.BooleanField(
+        '启用手机号验证功能',
+        default=False,
+        help_text='控制短信验证码发送、手机号绑定和手机号验证码登录接口及前端入口。',
+    )
+    email_verification_enabled = models.BooleanField(
+        '启用邮箱验证功能',
+        default=False,
+        help_text='控制邮箱验证码发送、邮箱验证和邮箱验证码登录接口及前端入口。',
+    )
+    require_phone_verification_for_order = models.BooleanField(
+        '下单必须验证手机号',
+        default=False,
+        help_text='开启后，下单必须使用当前账号已短信验证的手机号。',
+    )
+    require_email_verification_for_order = models.BooleanField(
+        '下单必须验证邮箱',
+        default=False,
+        help_text='开启后，下单前必须完成当前账号邮箱验证。',
+    )
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = '验证功能配置'
+
+    def __str__(self):
+        return '手机号 / 邮箱验证配置'
+
+    def clean(self):
+        errors = {}
+        if self.require_phone_verification_for_order and not self.phone_verification_enabled:
+            errors['require_phone_verification_for_order'] = '请先启用手机号验证功能。'
+        if self.require_email_verification_for_order and not self.email_verification_enabled:
+            errors['require_email_verification_for_order'] = '请先启用邮箱验证功能。'
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def phone_required_for_order(self):
+        return self.phone_verification_enabled and self.require_phone_verification_for_order
+
+    @property
+    def email_required_for_order(self):
+        return self.email_verification_enabled and self.require_email_verification_for_order
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(name='default')
+        return obj
 
 
 class PasswordResetToken(models.Model):

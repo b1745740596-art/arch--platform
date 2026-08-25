@@ -364,6 +364,7 @@ export default {
     phonePlaceholder: 'Enter an 11-digit phone number',
     phoneVerified: 'Your SMS-verified account number will be used.',
     phoneBindRequired: 'Bind and verify a phone number before submitting.',
+    phoneVerificationOff: 'SMS verification is currently not required; enter a reachable phone number.',
     bindNow: 'Open account settings',
     city: 'City',
     community: 'Community',

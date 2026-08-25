@@ -361,6 +361,7 @@ export default {
     phonePlaceholder: '请输入 11 位手机号',
     phoneVerified: '将使用账号已短信验证的手机号。',
     phoneBindRequired: '提交前请先绑定并验证手机号。',
+    phoneVerificationOff: '当前无需短信验证，填写可联系的手机号即可。',
     bindNow: '去账号设置',
     city: '城市',
     community: '小区',

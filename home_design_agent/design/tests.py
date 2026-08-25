@@ -10,7 +10,7 @@ from django.test import Client
 from rest_framework import serializers as drf_serializers, status
 from rest_framework.test import APITestCase
 
-from users.models import UserProfile
+from users.models import UserProfile, VerificationConfig
 
 from .admin import GenerationConfigAdminForm
 from .serializers import RenderJobSerializer
@@ -299,19 +299,40 @@ class DesignOwnershipIsolationTests(APITestCase):
         )
         self.assertEqual(cross_order.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_order_requires_consent_and_account_verified_phone(self):
+    def test_order_requires_consent_but_defaults_to_no_identity_verification(self):
+        self.alice.profile.phone = ''
+        self.alice.profile.save(update_fields=('phone', 'updated_at'))
         no_consent = self.client.post(
             '/api/design/orders/',
             {
                 'project': self.alice_project.id,
                 'title': 'Alice order',
-                'customer_phone': '13800000001',
             },
             format='json',
         )
         self.assertEqual(no_consent.status_code, status.HTTP_400_BAD_REQUEST)
 
-        other_phone = self.client.post(
+        accepted = self.client.post(
+            '/api/design/orders/',
+            {
+                'project': self.alice_project.id,
+                'title': 'Alice order',
+                'consent': True,
+            },
+            format='json',
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_201_CREATED, accepted.data)
+        self.assertEqual(accepted.data['customer_phone'], '')
+
+    def test_order_phone_verification_can_be_enabled_from_backend(self):
+        VerificationConfig.objects.update_or_create(
+            name='default',
+            defaults={
+                'phone_verification_enabled': True,
+                'require_phone_verification_for_order': True,
+            },
+        )
+        rejected = self.client.post(
             '/api/design/orders/',
             {
                 'project': self.alice_project.id,
@@ -321,13 +342,13 @@ class DesignOwnershipIsolationTests(APITestCase):
             },
             format='json',
         )
-        self.assertEqual(other_phone.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
 
         accepted = self.client.post(
             '/api/design/orders/',
             {
                 'project': self.alice_project.id,
-                'title': 'Alice order',
+                'title': 'Alice verified order',
                 'customer_phone': '13800000001',
                 'consent': True,
             },
@@ -335,6 +356,31 @@ class DesignOwnershipIsolationTests(APITestCase):
         )
         self.assertEqual(accepted.status_code, status.HTTP_201_CREATED, accepted.data)
         self.assertEqual(accepted.data['customer_phone'], '13800000001')
+
+    def test_order_email_verification_can_be_enabled_from_backend(self):
+        VerificationConfig.objects.update_or_create(
+            name='default',
+            defaults={
+                'email_verification_enabled': True,
+                'require_email_verification_for_order': True,
+            },
+        )
+        rejected = self.client.post(
+            '/api/design/orders/',
+            {'project': self.alice_project.id, 'title': 'Email order', 'consent': True},
+            format='json',
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.alice.profile.email_verified = True
+        self.alice.profile.verified_email = 'alice@example.com'
+        self.alice.profile.save(update_fields=('email_verified', 'verified_email', 'updated_at'))
+        accepted = self.client.post(
+            '/api/design/orders/',
+            {'project': self.alice_project.id, 'title': 'Email order', 'consent': True},
+            format='json',
+        )
+        self.assertEqual(accepted.status_code, status.HTTP_201_CREATED, accepted.data)
 
     def test_provider_catalog_is_read_only(self):
         response = self.client.post(

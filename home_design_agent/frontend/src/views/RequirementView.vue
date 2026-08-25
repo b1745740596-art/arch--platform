@@ -9,6 +9,9 @@ const formRef = ref()
 const submitting = ref(false)
 const loadingOptions = ref(true)
 const verifiedPhone = ref('')
+const verificationConfig = reactive({
+  phone_verification_enabled: false,
+})
 
 const form = reactive({
   name: '',
@@ -29,10 +32,12 @@ const options = reactive({
 
 const phoneRule = {
   validator: (rule, value, callback) => {
-    if (!verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneBindRequired')))
     if (!value) return callback(new Error(t('requirement.rules.phoneRequired')))
     if (!/^1[3-9]\d{9}$/.test(value)) return callback(new Error(t('requirement.rules.phoneInvalid')))
-    if (value !== verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneMismatch')))
+    if (verificationConfig.phone_verification_enabled) {
+      if (!verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneBindRequired')))
+      if (value !== verifiedPhone.value) return callback(new Error(t('requirement.rules.phoneMismatch')))
+    }
     callback()
   },
   trigger: 'blur',
@@ -66,9 +71,18 @@ async function loadProfile() {
   }
 }
 
+async function loadVerificationConfig() {
+  try {
+    Object.assign(verificationConfig, await api.getVerificationConfig())
+  } catch {
+    // 默认关闭验证要求，保持联系方式表单可用。
+  }
+}
+
 onMounted(() => {
   loadOptions()
   loadProfile()
+  loadVerificationConfig()
 })
 
 async function submit() {
@@ -126,14 +140,17 @@ async function submit() {
           <el-input
             v-model="form.phone"
             maxlength="11"
-            :disabled="Boolean(verifiedPhone)"
+            :disabled="verificationConfig.phone_verification_enabled && Boolean(verifiedPhone)"
             :placeholder="t('requirement.phonePlaceholder')"
           />
-          <small v-if="verifiedPhone">{{ t('requirement.phoneVerified') }}</small>
-          <small v-else>
+          <small v-if="verificationConfig.phone_verification_enabled && verifiedPhone">
+            {{ t('requirement.phoneVerified') }}
+          </small>
+          <small v-else-if="verificationConfig.phone_verification_enabled">
             {{ t('requirement.phoneBindRequired') }}
             <router-link to="/account">{{ t('requirement.bindNow') }}</router-link>
           </small>
+          <small v-else>{{ t('requirement.phoneVerificationOff') }}</small>
         </div>
       </el-form-item>
 

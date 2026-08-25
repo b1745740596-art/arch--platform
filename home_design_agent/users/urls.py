@@ -13,6 +13,7 @@ admin_user_detail = views.AdminUserViewSet.as_view({
 })
 
 urlpatterns = [
+    path('verification-config/', views.VerificationConfigView.as_view(), name='verification-config'),
     path('me/', views.MeView.as_view(), name='me'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     path('password-reset/', views.PasswordResetRequestView.as_view(), name='password-reset'),

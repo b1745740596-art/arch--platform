@@ -23,7 +23,7 @@ from design.models import (
     RenderJob,
     ServiceProvider,
 )
-from users.models import UserProfile
+from users.models import UserProfile, VerificationConfig
 
 from .models import Conversation, CustomerProfile, KnowledgeDocument, Message, TalkStep
 from .engine import TurnContext, _numeric_facts, _safe_reply
@@ -637,6 +637,28 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(second.status_code, status.HTTP_201_CREATED)
         self.assertEqual(HomeOrder.objects.count(), 1)
 
+    def test_conversion_does_not_require_verified_phone_when_disabled(self):
+        account_profile = self.user.profile
+        account_profile.phone = ''
+        account_profile.save(update_fields=('phone', 'updated_at'))
+        VerificationConfig.objects.update_or_create(
+            name='default',
+            defaults={
+                'phone_verification_enabled': False,
+                'email_verification_enabled': False,
+                'require_phone_verification_for_order': False,
+                'require_email_verification_for_order': False,
+            },
+        )
+        session_id = self.create_session().data['id']
+        final_turn = self.complete_profile(session_id)
+
+        self.assertTrue(final_turn.data['profile']['conversion_ready'])
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/convert/', {'consent': True}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
     def test_conversion_never_reuses_or_mutates_another_users_owner(self):
         stranger = User.objects.create_user(username='foreign-owner-user', password='secret123')
         foreign_owner = Owner.objects.create(
@@ -669,6 +691,13 @@ class TalkBotApiTests(APITestCase):
         self.assertIn('确认同意', str(response.data))
 
     def test_convert_rejects_unverified_third_party_phone(self):
+        VerificationConfig.objects.update_or_create(
+            name='default',
+            defaults={
+                'phone_verification_enabled': True,
+                'require_phone_verification_for_order': True,
+            },
+        )
         stranger = User.objects.create_user(username='unverified', password='secret123')
         self.client.force_authenticate(stranger)
         session = self.client.post(SESSIONS_URL, {}, format='json').data

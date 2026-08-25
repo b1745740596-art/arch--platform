@@ -7,6 +7,7 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core import mail
 from django.core.management import call_command
 from django.test import override_settings
@@ -19,6 +20,7 @@ from users.models import (
     RememberToken,
     SmsVerificationCode,
     UserProfile,
+    VerificationConfig,
 )
 from users.services import create_remember_token
 
@@ -39,6 +41,38 @@ EMAIL_LOGIN_CODE_URL = '/api/users/email/login-code/'
 EMAIL_LOGIN_URL = '/api/users/email/login/'
 REMEMBER_URL = '/api/users/remember/'
 TOKEN_LOGIN_URL = '/api/users/token-login/'
+VERIFICATION_CONFIG_URL = '/api/users/verification-config/'
+
+
+class VerificationConfigTests(APITestCase):
+    def test_public_config_defaults_to_all_verification_disabled(self):
+        response = self.client.get(VERIFICATION_CONFIG_URL)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, {
+            'phone_verification_enabled': False,
+            'email_verification_enabled': False,
+            'require_phone_verification_for_order': False,
+            'require_email_verification_for_order': False,
+        })
+
+    def test_disabled_features_reject_code_requests(self):
+        phone = self.client.post(
+            PHONE_LOGIN_CODE_URL, {'phone': '13800000000'}, format='json',
+        )
+        email = self.client.post(
+            EMAIL_LOGIN_CODE_URL, {'email': 'user@example.com'}, format='json',
+        )
+
+        self.assertEqual(phone.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(email.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_order_requirement_cannot_be_enabled_without_feature(self):
+        config = VerificationConfig.load()
+        config.require_phone_verification_for_order = True
+
+        with self.assertRaisesMessage(ValidationError, '请先启用手机号验证功能'):
+            config.full_clean()
 
 
 class MeViewTests(APITestCase):
@@ -381,6 +415,9 @@ class AdminUserViewSetTests(APITestCase):
 class PhoneAuthFlowTests(APITestCase):
     def setUp(self):
         cache.clear()
+        VerificationConfig.objects.update_or_create(
+            name='default', defaults={'phone_verification_enabled': True},
+        )
         self.user = User.objects.create_user(username='dave', password='secret123')
 
     def tearDown(self):
@@ -491,6 +528,9 @@ class PhoneAuthFlowTests(APITestCase):
 class EmailAuthFlowTests(APITestCase):
     def setUp(self):
         cache.clear()
+        VerificationConfig.objects.update_or_create(
+            name='default', defaults={'email_verification_enabled': True},
+        )
         self.user = User.objects.create_user(
             username='erin',
             email='erin@example.com',

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
@@ -13,6 +13,10 @@ const auth = useAuthStore()
 const { t } = useI18n()
 
 const activeTab = ref('password')
+const verificationConfig = reactive({
+  phone_verification_enabled: false,
+  email_verification_enabled: false,
+})
 const formRef = ref()
 const phoneFormRef = ref()
 const submitting = ref(false)
@@ -62,6 +66,14 @@ const emailRules = computed(() => ({
   ],
   code: [{ required: true, message: t('auth.rules.codeRequired'), trigger: 'blur' }],
 }))
+
+onMounted(async () => {
+  try {
+    Object.assign(verificationConfig, await api.getVerificationConfig())
+  } catch {
+    // 配置读取失败时只保留始终可用的密码登录。
+  }
+})
 
 function startCountdown(seconds) {
   countdown.value = seconds
@@ -200,8 +212,7 @@ onUnmounted(() => {
         </el-form>
       </el-tab-pane>
 
-      <!-- 暂时隐藏手机验证码登录入口，代码保留 -->
-      <el-tab-pane v-if="false" :label="t('auth.phoneLogin')" name="phone">
+      <el-tab-pane v-if="verificationConfig.phone_verification_enabled" :label="t('auth.phoneLogin')" name="phone">
         <el-form ref="phoneFormRef" :model="phoneForm" :rules="phoneRules" label-width="100px">
           <el-form-item :label="t('account.phone')" prop="phone">
             <el-input v-model="phoneForm.phone" :placeholder="t('auth.phonePlaceholder')">
@@ -222,7 +233,7 @@ onUnmounted(() => {
         </el-form>
       </el-tab-pane>
 
-      <el-tab-pane :label="t('auth.emailLogin')" name="email">
+      <el-tab-pane v-if="verificationConfig.email_verification_enabled" :label="t('auth.emailLogin')" name="email">
         <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-width="100px">
           <el-form-item :label="t('auth.email')" prop="email">
             <el-input v-model="emailForm.email" :placeholder="t('auth.emailPlaceholder')">

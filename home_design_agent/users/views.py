@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from rest_framework import viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import GenericAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -16,7 +17,7 @@ from config.throttles import (
     VerificationTargetThrottle,
 )
 
-from .models import EmailVerificationCode, SmsVerificationCode, UserProfile
+from .models import EmailVerificationCode, SmsVerificationCode, UserProfile, VerificationConfig
 from .permissions import CanManageUsers, IsActiveUser
 from .serializers import (
     AdminUserSerializer,
@@ -46,6 +47,15 @@ from .services import (
 User = get_user_model()
 
 
+def _require_verification_feature(channel):
+    config = VerificationConfig.load()
+    if channel == 'phone' and not config.phone_verification_enabled:
+        raise PermissionDenied('手机号验证功能当前已关闭。')
+    if channel == 'email' and not config.email_verification_enabled:
+        raise PermissionDenied('邮箱验证功能当前已关闭。')
+    return config
+
+
 def _get_or_create_profile(user):
     profile, _ = UserProfile.objects.get_or_create(
         user=user,
@@ -72,6 +82,22 @@ class MeView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return _get_or_create_profile(self.request.user)
+
+
+class VerificationConfigView(APIView):
+    """Public feature flags; contains no credentials or provider details."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        config = VerificationConfig.load()
+        return Response({
+            'phone_verification_enabled': config.phone_verification_enabled,
+            'email_verification_enabled': config.email_verification_enabled,
+            'require_phone_verification_for_order': config.phone_required_for_order,
+            'require_email_verification_for_order': config.email_required_for_order,
+        })
 
 
 class ChangePasswordView(GenericAPIView):
@@ -147,6 +173,7 @@ class PhoneBindCodeView(APIView):
     throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('phone')
         serializer = SmsCodeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data['phone']
@@ -172,6 +199,7 @@ class PhoneBindView(GenericAPIView):
     serializer_class = PhoneBindSerializer
 
     def post(self, request, *args, **kwargs):
+        _require_verification_feature('phone')
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -186,6 +214,7 @@ class PhoneLoginCodeView(APIView):
     throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('phone')
         serializer = SmsCodeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         phone = serializer.validated_data['phone']
@@ -205,6 +234,7 @@ class PhoneLoginView(APIView):
     throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('phone')
         enforce_login_csrf(request)
         serializer = PhoneLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
@@ -220,6 +250,7 @@ class EmailBindCodeView(APIView):
     throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('email')
         serializer = EmailCodeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
@@ -243,6 +274,7 @@ class EmailBindView(GenericAPIView):
     serializer_class = EmailBindSerializer
 
     def post(self, request, *args, **kwargs):
+        _require_verification_feature('email')
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -257,6 +289,7 @@ class EmailLoginCodeView(APIView):
     throttle_classes = [VerificationIPThrottle, VerificationTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('email')
         serializer = EmailCodeRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
@@ -276,6 +309,7 @@ class EmailLoginView(APIView):
     throttle_classes = [AuthLoginIPThrottle, AuthLoginTargetThrottle]
 
     def post(self, request):
+        _require_verification_feature('email')
         enforce_login_csrf(request)
         serializer = EmailLoginSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
