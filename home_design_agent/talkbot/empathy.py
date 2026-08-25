@@ -110,7 +110,12 @@ def _contextual_profile_update(text: str, expected_field: str) -> dict:
         return {'desired_timeline': compact}
 
     if expected_field == 'household':
-        family_size = re.fullmatch(r'(?:一家|家里)?([一二两三四五六七八九\d]+)口(?:人|之家)?', compact)
+        family_size = re.fullmatch(
+            r'(?:一家|家里|我们|就(?:这个|这)?)?(?:一共|总共)?'
+            r'([一二两三四五六七八九十\d]+)(?:口|个(?:人)?|人)'
+            r'(?:住|居住|长期住|之家)?',
+            compact,
+        )
         if family_size:
             return {'household': f'{family_size.group(1)}口之家'}
 
@@ -182,13 +187,22 @@ def extract_profile_updates(text: str, *, expected_field: str = '') -> dict:
     if style_candidates:
         updates['style'] = max(style_candidates, key=lambda item: (item[0], item[1]))[2]
 
-    if any(word in text for word in ('没有孩子', '没孩子', '孩子不住', '不带孩子')):
+    if any(word in text for word in ('没有孩子', '没孩子', '孩子不住', '小孩不住', '不带孩子')):
         updates['has_kids'] = False
-    elif any(word in text for word in ('孩子', '宝宝', '儿童', '儿子', '女儿')):
+    elif any(word in text for word in ('孩子', '小孩', '宝宝', '儿童', '儿子', '女儿')):
         updates['has_kids'] = True
-    if any(word in text for word in ('没有老人同住', '老人不同住', '父母不同住')):
+    kids_age_match = re.search(
+        r'(?:孩子|小孩|宝宝|儿童|儿子|女儿)(?:大概|今年)?\s*'
+        r'([一二两三四五六七八九十\d]{1,3})\s*岁',
+        text,
+    )
+    if kids_age_match:
+        updates['kids_age'] = f'{kids_age_match.group(1)}岁'
+    if any(word in text for word in (
+        '没有老人同住', '没有老人', '没老人', '老人不同住', '老人不住', '父母不同住',
+    )):
         updates['has_elderly'] = False
-    elif any(word in text for word in ('老人同住', '父母同住', '爸妈同住', '老人住')):
+    elif any(word in text for word in ('老人', '父母同住', '爸妈同住')):
         updates['has_elderly'] = True
     if any(word in text for word in ('猫', '狗', '宠物')):
         pets = [animal for animal in ('猫', '狗', '宠物') if animal in text]

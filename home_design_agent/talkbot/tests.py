@@ -156,10 +156,11 @@ class TalkBotApiTests(APITestCase):
         turns = (
             ('上海', 'area'),
             ('30', 'household'),
-            ('一家三口，有孩子', 'style'),
+            ('就这个五个', 'style'),
             ('原木风', 'budget_max'),
             ('5w', 'desired_timeline'),
-            ('十月', ''),
+            ('十月', 'pain_points'),
+            ('环保健康', ''),
         )
         for content, next_field in turns:
             response = self.client.post(
@@ -177,7 +178,7 @@ class TalkBotApiTests(APITestCase):
         profile = response.data['profile']
         self.assertEqual(profile['city'], '上海')
         self.assertEqual(profile['area'], '30.00')
-        self.assertEqual(profile['household'], '三口之家、有孩子')
+        self.assertEqual(profile['household'], '五口之家')
         self.assertEqual(profile['style'], '原木')
         self.assertEqual(profile['budget_max'], 50000)
         self.assertEqual(profile['desired_timeline'], '十月')
@@ -945,6 +946,16 @@ class ProfileExtractionTests(APITestCase):
         self.assertNotIn('budget_max', extract_profile_updates('30平', expected_field='budget_max'))
         self.assertNotIn('area', extract_profile_updates('不知道', expected_field='area'))
 
+    def test_colloquial_household_and_family_ages_are_extracted(self):
+        household = extract_profile_updates('就这个五个', expected_field='household')
+        self.assertEqual(household['household'], '五口之家')
+
+        family = extract_profile_updates('老人七十，小孩六岁')
+        self.assertIs(family['has_elderly'], True)
+        self.assertIs(family['has_kids'], True)
+        self.assertEqual(family['kids_age'], '六岁')
+        self.assertEqual(family['household'], '有孩子、有老人同住')
+
     def test_identity_and_city_are_not_confused(self):
         updates = extract_profile_updates('我是上海人，准备装修')
         self.assertNotIn('name', updates)
@@ -953,6 +964,7 @@ class ProfileExtractionTests(APITestCase):
 
     def test_negated_family_style_and_city_are_not_selected(self):
         self.assertIs(extract_profile_updates('没有孩子')['has_kids'], False)
+        self.assertIs(extract_profile_updates('没有老人同住')['has_elderly'], False)
         self.assertEqual(extract_profile_updates('不喜欢现代，想要原木')['style'], '原木')
         self.assertEqual(extract_profile_updates('不在上海，我在苏州')['city'], '苏州')
         self.assertNotIn('name', extract_profile_updates('我叫王先生想装修房子'))
