@@ -25,7 +25,7 @@ from design.models import (
 )
 from design.services import build_preview_schemes
 
-from . import empathy, llm, psychology, rag, strategy
+from . import business_tools, empathy, llm, psychology, rag, strategy
 from .models import Conversation, CustomerProfile, Message, TalkStep, TalkWorkflow
 
 
@@ -82,6 +82,7 @@ class TurnContext:
     generation_error: str = ''
     grounding_fallback: bool = False
     unsupported_facts: list[str] | None = None
+    tool_results: list[dict] | None = None
     assistant_message: Message | None = None
     profile_update_completed: bool = False
     stage_update_completed: bool = False
@@ -695,6 +696,35 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
                 'elapsed_ms': int((time.monotonic() - started) * 1000),
             })
 
+        tool_started = time.monotonic()
+        tool_status = 'ok'
+        tool_detail = '未触发业务工具'
+        try:
+            if (context.analysis or {}).get('intent') != 'opt_out':
+                context.tool_results = business_tools.collect_tool_results(
+                    context.conversation,
+                    context.profile,
+                    context.text,
+                )
+            else:
+                context.tool_results = []
+            if context.tool_results:
+                tool_detail = '调用=' + '、'.join(
+                    item.get('kind', '') for item in context.tool_results
+                )
+        except Exception as exc:  # noqa: BLE001 - catalog failure must not break chat
+            context.tool_results = []
+            tool_status = 'failed'
+            tool_detail = type(exc).__name__
+        logs.append({
+            'order': 850,
+            'kind': 'business_tools',
+            'name': '业务工具调用',
+            'status': tool_status,
+            'detail': tool_detail[:200],
+            'elapsed_ms': int((time.monotonic() - tool_started) * 1000),
+        })
+
         with transaction.atomic():
             conversation = Conversation.objects.select_for_update().get(pk=conversation.pk)
             existing_reply = conversation.messages.filter(
@@ -717,6 +747,9 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
                 profile.save()
             context.profile = profile
             context.reply = _safe_reply(context)
+            tool_intro = business_tools.tool_result_intro(context.tool_results or [])
+            if tool_intro:
+                context.reply = guard_reply(f'{tool_intro} {context.reply}')
             context.assistant_message = Message.objects.create(
                 conversation=conversation,
                 role=Message.Role.ASSISTANT,
@@ -735,6 +768,7 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
                     'generation_error': context.generation_error,
                     'grounding_fallback': context.grounding_fallback,
                     'unsupported_facts': context.unsupported_facts or [],
+                    'tool_results': context.tool_results or [],
                     'workflow_log': logs,
                 },
             )
@@ -939,6 +973,10 @@ def convert_conversation(conversation: Conversation, *, consent: bool = False) -
         content=f'项目订单 {order.order_no} 已创建。我也为你准备了三档预方案，接下来可在“项目订单”中查看；正式报价以量房确认结果为准。',
         intent='converted',
         emotion=profile.emotion,
-        metadata={'order_id': order.id, 'project_id': project.id},
+        metadata={
+            'order_id': order.id,
+            'project_id': project.id,
+            'tool_results': [business_tools.completed_order_card(order)],
+        },
     )
     return order

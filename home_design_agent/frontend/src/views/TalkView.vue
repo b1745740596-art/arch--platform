@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api/client'
 import { useTerm } from '@/i18n'
+import { resolveMediaUrl } from '@/utils/media'
 
 const { t, tm, rt, locale } = useI18n()
 const term = useTerm()
@@ -33,6 +34,10 @@ const interactionLocked = computed(
 const lastQuestion = computed(() => {
   const last = [...messages.value].reverse().find((item) => item.role === 'assistant')
   return last?.question_asked || ''
+})
+const latestHasOrderAction = computed(() => {
+  const last = [...messages.value].reverse().find((item) => item.role === 'assistant')
+  return toolResults(last).some((item) => item.kind === 'order_action')
 })
 
 const QUICK_REPLY_VALUES = {
@@ -84,6 +89,40 @@ function stageLabel(conversation) {
 
 function displayMessage(message) {
   return message?.metadata?.is_welcome ? t('talk.welcome') : message?.content || ''
+}
+
+function toolResults(message) {
+  const results = message?.metadata?.tool_results
+  return Array.isArray(results) ? results : []
+}
+
+function money(value) {
+  return value == null ? '' : `¥${Number(value).toLocaleString()}`
+}
+
+function toolPrice(item) {
+  if (item?.price != null) return money(item.price)
+  if (item?.price_min != null && item?.price_max != null) {
+    return `${money(item.price_min)}–${money(item.price_max)}`
+  }
+  return item?.price_text || ''
+}
+
+function toolActionLabel(action) {
+  return action?.type === 'convert' ? t('talk.tools.confirmOrder') : t('talk.tools.open')
+}
+
+function openToolPath(path) {
+  if (path) router.push(path)
+}
+
+async function runToolAction(action) {
+  if (!action || interactionLocked.value) return
+  if (action.type === 'convert') {
+    await convertToOrder()
+    return
+  }
+  if (action.type === 'navigate') openToolPath(action.path)
 }
 
 function formatTime(value) {
@@ -429,10 +468,74 @@ onBeforeUnmount(() => {
           :class="`is-${message.role}`"
         >
           <span v-if="message.role === 'assistant'" class="bubble-avatar"><el-icon><Service /></el-icon></span>
-          <div class="bubble-wrap">
+          <div class="bubble-wrap" :class="{ 'has-tools': toolResults(message).length }">
             <div class="bubble" :class="{ pending: message.pending, failed: message.failed }">
               {{ displayMessage(message) }}
             </div>
+            <section
+              v-for="result in toolResults(message)"
+              :key="`${message.id}-${result.kind}`"
+              class="tool-card"
+            >
+              <header class="tool-card-head">
+                <b>{{ result.title }}</b>
+                <el-tag v-if="result.ready" size="small" type="success">{{ t('talk.tools.ready') }}</el-tag>
+              </header>
+              <div v-if="result.items?.length" class="tool-grid">
+                <article v-for="item in result.items" :key="`${result.kind}-${item.id}`" class="tool-item">
+                  <el-image
+                    v-if="resolveMediaUrl(item.image_url)"
+                    :src="resolveMediaUrl(item.image_url)"
+                    fit="cover"
+                    class="tool-image"
+                    :preview-src-list="[resolveMediaUrl(item.image_url)]"
+                    preview-teleported
+                  >
+                    <template #error>
+                      <div class="tool-image tool-image-placeholder"><el-icon><Picture /></el-icon></div>
+                    </template>
+                  </el-image>
+                  <div v-else-if="['products', 'renders', 'schemes', 'designers'].includes(result.kind)" class="tool-image tool-image-placeholder">
+                    <el-icon><Picture /></el-icon>
+                  </div>
+                  <div class="tool-item-body">
+                    <div class="tool-item-title">
+                      <b>{{ item.title }}</b>
+                      <el-tag v-if="item.status" size="small" effect="plain">{{ item.status }}</el-tag>
+                    </div>
+                    <small v-if="item.subtitle">{{ item.subtitle }}</small>
+                    <div v-if="item.badges?.length" class="tool-badges">
+                      <span v-for="badge in item.badges" :key="badge">{{ badge }}</span>
+                    </div>
+                    <p v-if="item.description">{{ item.description }}</p>
+                    <div class="tool-item-foot">
+                      <strong v-if="toolPrice(item)">{{ toolPrice(item) }}</strong>
+                      <span v-if="item.rating">{{ t('talk.tools.rating', { rating: item.rating }) }}</span>
+                      <el-button v-if="item.path" link type="primary" size="small" @click="openToolPath(item.path)">
+                        {{ t('talk.tools.details') }}
+                      </el-button>
+                      <a v-if="item.href" :href="item.href" target="_blank" rel="noopener noreferrer">
+                        {{ t('talk.tools.buy') }}
+                      </a>
+                    </div>
+                  </div>
+                </article>
+              </div>
+              <p v-else-if="result.empty_message" class="tool-empty">{{ result.empty_message }}</p>
+              <el-button
+                v-if="result.action"
+                class="tool-action"
+                :type="result.action.type === 'convert' ? 'primary' : 'success'"
+                plain
+                round
+                size="small"
+                :loading="result.action.type === 'convert' && converting"
+                :disabled="interactionLocked || (result.action.type === 'convert' && !conversionReady)"
+                @click="runToolAction(result.action)"
+              >
+                {{ toolActionLabel(result.action) }}
+              </el-button>
+            </section>
             <time>{{ formatTime(message.created_at) }}</time>
           </div>
         </article>
@@ -454,7 +557,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div v-if="conversionReady" class="conversion-card">
+      <div v-if="conversionReady && !latestHasOrderAction" class="conversion-card">
         <span class="conversion-icon"><el-icon><CircleCheckFilled /></el-icon></span>
         <div>
           <b>{{ t('talk.readyTitle') }}</b>
@@ -598,6 +701,7 @@ onBeforeUnmount(() => {
 .message-row.is-user { justify-content: flex-end; }
 .bubble-avatar { flex: none; width: 28px; height: 28px; border-radius: 10px; font-size: 14px; }
 .bubble-wrap { max-width: min(76%, 570px); display: flex; flex-direction: column; gap: 3px; }
+.bubble-wrap.has-tools { width: min(92%, 760px); max-width: min(92%, 760px); }
 .bubble { padding: 10px 13px; border-radius: 17px; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .is-assistant .bubble { color: #33443b; background: #fff; border: 1px solid rgba(35,169,124,.10); border-bottom-left-radius: 5px; box-shadow: 0 5px 14px rgba(48, 66, 56, .05); }
 .is-user .bubble { color: #fff; background: linear-gradient(135deg, #35bd8d, #1c9a70); border-bottom-right-radius: 5px; box-shadow: 0 7px 18px rgba(35,169,124,.15); }
@@ -605,6 +709,25 @@ onBeforeUnmount(() => {
 .bubble.failed { outline: 2px solid rgba(245,108,108,.45); }
 .bubble-wrap time { padding: 0 4px; color: #a3aaa6; font-size: 9px; }
 .is-user .bubble-wrap time { text-align: right; }
+.tool-card { margin-top: 5px; padding: 12px; border: 1px solid rgba(35,169,124,.14); border-radius: 16px; background: rgba(255,255,255,.96); box-shadow: 0 8px 22px rgba(48,66,56,.06); }
+.tool-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.tool-card-head b { color: var(--brand-ink); font-size: 13px; }
+.tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tool-item { min-width: 0; overflow: hidden; border: 1px solid rgba(35,169,124,.10); border-radius: 12px; background: #f9fbfa; }
+.tool-image { display: block; width: 100%; height: 112px; background: #edf3ef; }
+.tool-image-placeholder { display: grid; place-items: center; color: #91a098; font-size: 26px; }
+.tool-item-body { display: flex; flex-direction: column; gap: 4px; padding: 9px; }
+.tool-item-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.tool-item-title b { min-width: 0; overflow: hidden; color: var(--brand-ink); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.tool-item-body > small { overflow: hidden; color: var(--brand-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.tool-item-body > p { display: -webkit-box; overflow: hidden; margin: 2px 0; color: #637168; font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.tool-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.tool-badges span { padding: 1px 6px; border-radius: 999px; background: rgba(35,169,124,.08); color: var(--brand-green-deep); font-size: 9px; }
+.tool-item-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-height: 20px; color: var(--brand-muted); font-size: 10px; }
+.tool-item-foot strong { margin-right: auto; color: #d66a35; font-size: 12px; }
+.tool-item-foot a { color: var(--brand-green-deep); text-decoration: none; }
+.tool-empty { margin: 0 0 9px; color: var(--brand-muted); font-size: 11px; line-height: 1.6; }
+.tool-action { margin-top: 9px; width: 100%; }
 .typing { display: flex; gap: 4px; width: 52px; }
 .typing i { width: 5px; height: 5px; border-radius: 50%; background: #8e9d95; animation: typing 1.1s infinite ease-in-out; }
 .typing i:nth-child(2) { animation-delay: .15s; }
@@ -640,6 +763,9 @@ onBeforeUnmount(() => {
   .talk-head, .profile-progress { padding-left: 15px; padding-right: 15px; }
   .message-pane { min-height: 0; padding: 14px 14px; }
   .bubble-wrap { max-width: 84%; }
+  .bubble-wrap.has-tools { width: 94%; max-width: 94%; }
+  .tool-grid { grid-template-columns: 1fr; }
+  .tool-image { height: 150px; }
   .quick-replies { padding-left: 14px; padding-right: 14px; }
   .conversion-card { margin-left: 14px; margin-right: 14px; align-items: flex-start; flex-wrap: wrap; }
   .conversion-card .el-button { width: 100%; }

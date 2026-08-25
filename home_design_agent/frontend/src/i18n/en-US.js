@@ -63,6 +63,14 @@ export default {
     sendRecovered: 'Your message was sent and the server reply was recovered',
     sendAccepted: 'The server received your message. Reopen this conversation shortly to see the reply.',
     convertFailed: 'Could not create order: {msg}',
+    tools: {
+      ready: 'Ready',
+      open: 'Open',
+      details: 'Details',
+      buy: 'Buy',
+      confirmOrder: 'Confirm & create order',
+      rating: '{rating} rating',
+    },
     stages: {
       icebreak: 'Introduction',
       discovery: 'Requirements',

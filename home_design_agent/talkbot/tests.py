@@ -10,7 +10,9 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from design.models import (
+    Designer,
     DesignScheme,
+    Furniture,
     GenerationConfig,
     HomeOrder,
     HomeReport,
@@ -18,6 +20,8 @@ from design.models import (
     OrderDetail,
     Owner,
     Project,
+    RenderJob,
+    ServiceProvider,
 )
 from users.models import UserProfile
 
@@ -150,6 +154,105 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(assistant.metadata['reply_source'], 'rule')
         self.assertEqual(assistant.metadata['generation_status'], 'disabled')
         self.assertEqual(assistant.metadata['workflow_log'], conversation.workflow_log)
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    def test_message_can_call_product_provider_and_designer_catalogs(self):
+        product = Furniture.objects.create(
+            name='原木客厅沙发',
+            category=Furniture.Category.SOFA,
+            brand='示例品牌',
+            style='原木',
+            rooms=['客厅'],
+            price=6999,
+            buy_url='https://shop.example.com/sofa',
+        )
+        provider = ServiceProvider.objects.create(
+            name='上海安心施工队',
+            kind=ServiceProvider.Kind.CONSTRUCTION,
+            city='上海',
+            quote_range='需量房确认',
+            rating='4.8',
+        )
+        designer = Designer.objects.create(
+            name='林设计师',
+            title='主案设计师',
+            city='上海',
+            styles=['原木'],
+            years=8,
+            rating='4.9',
+        )
+        session_id = self.create_session().data['id']
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '我在上海，想看看原木风沙发、施工队和设计师。'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        results = response.data['message']['metadata']['tool_results']
+        by_kind = {item['kind']: item for item in results}
+        self.assertEqual(by_kind['products']['items'][0]['id'], product.id)
+        self.assertEqual(by_kind['providers']['items'][0]['id'], provider.id)
+        self.assertEqual(by_kind['designers']['items'][0]['id'], designer.id)
+        self.assertIn('调用并展示', response.data['message']['content'])
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    def test_render_and_order_tools_only_expose_the_current_users_data(self):
+        own_project = Project.objects.create(user=self.user, title='我的项目')
+        own_render = RenderJob.objects.create(
+            project=own_project,
+            status=RenderJob.Status.SUCCESS,
+            room_type='客厅',
+            style='原木',
+            result_image_url='https://images.example.com/mine.jpg',
+        )
+        own_order = HomeOrder.objects.create(
+            user=self.user,
+            project=own_project,
+            title='我的订单',
+        )
+        stranger = User.objects.create_user(username='tool-stranger', password='secret123')
+        foreign_project = Project.objects.create(user=stranger, title='其他用户项目')
+        foreign_render = RenderJob.objects.create(
+            project=foreign_project,
+            status=RenderJob.Status.SUCCESS,
+            result_image_url='https://images.example.com/foreign.jpg',
+        )
+        foreign_order = HomeOrder.objects.create(
+            user=stranger,
+            project=foreign_project,
+            title='其他用户订单',
+        )
+
+        session_id = self.create_session().data['id']
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '查看我的效果图和我的订单'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        by_kind = {
+            item['kind']: item for item in response.data['message']['metadata']['tool_results']
+        }
+        self.assertEqual([item['id'] for item in by_kind['renders']['items']], [own_render.id])
+        self.assertNotIn(foreign_render.id, [item['id'] for item in by_kind['renders']['items']])
+        self.assertEqual([item['id'] for item in by_kind['orders']['items']], [own_order.id])
+        self.assertNotIn(foreign_order.id, [item['id'] for item in by_kind['orders']['items']])
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    def test_order_tool_requires_profile_completion_and_explicit_confirmation(self):
+        session_id = self.create_session().data['id']
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '帮我下单'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        order_card = response.data['message']['metadata']['tool_results'][0]
+        self.assertEqual(order_card['kind'], 'order_action')
+        self.assertFalse(order_card['ready'])
+        self.assertIsNone(order_card['action'])
+        self.assertTrue(order_card['missing'])
+        self.assertEqual(HomeOrder.objects.count(), 0)
 
     def test_terse_answers_follow_the_last_question_and_advance_profile(self):
         session_id = self.create_session().data['id']
@@ -497,6 +600,16 @@ class TalkBotApiTests(APITestCase):
         final_turn = self.complete_profile(session_id)
         self.assertTrue(final_turn.data['profile']['conversion_ready'])
 
+        order_prompt = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '帮我下单'},
+            format='json',
+        )
+        order_card = order_prompt.data['message']['metadata']['tool_results'][0]
+        self.assertTrue(order_card['ready'])
+        self.assertEqual(order_card['action'], {'type': 'convert'})
+        self.assertEqual(HomeOrder.objects.count(), 0)
+
         response = self.client.post(
             f'{SESSIONS_URL}{session_id}/convert/', {'consent': True}, format='json',
         )
@@ -514,6 +627,9 @@ class TalkBotApiTests(APITestCase):
         self.assertTrue(HomeReport.objects.filter(pk=order.report_id, status=HomeReport.Status.ORDERED).exists())
         self.assertTrue(OrderDetail.objects.filter(order=order).exists())
         self.assertTrue(Lead.objects.filter(project=order.project, contact_phone='13800138000').exists())
+        latest_message = response.data['conversation']['messages'][-1]
+        self.assertEqual(latest_message['metadata']['tool_results'][0]['kind'], 'orders')
+        self.assertEqual(latest_message['metadata']['tool_results'][0]['items'][0]['id'], order.id)
 
         second = self.client.post(
             f'{SESSIONS_URL}{session_id}/convert/', {'consent': True}, format='json',

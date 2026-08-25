@@ -63,6 +63,14 @@ export default {
     sendRecovered: '消息已成功发送，并已恢复服务端回复',
     sendAccepted: '消息已被服务端接收，稍后重新进入对话即可查看回复',
     convertFailed: '生成订单失败：{msg}',
+    tools: {
+      ready: '可下单',
+      open: '打开查看',
+      details: '查看详情',
+      buy: '购买链接',
+      confirmOrder: '确认并生成订单',
+      rating: '{rating} 分',
+    },
     stages: {
       icebreak: '破冰',
       discovery: '需求挖掘',
