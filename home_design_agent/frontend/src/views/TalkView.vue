@@ -111,6 +111,10 @@ function messageClientId(message) {
   return message?.client_message_id || message?.client_id || message?.metadata?.client_message_id || ''
 }
 
+function wait(milliseconds) {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds))
+}
+
 function mergeSessionSummary(id, patch = {}, moveToFront = false) {
   const index = sessions.value.findIndex((item) => item.id === id)
   const current = index >= 0 ? sessions.value[index] : { id }
@@ -202,9 +206,9 @@ async function reconcileFailedSend(sessionId, clientMessageId) {
     )
     if (acceptedIndex < 0) return { accepted: false, replyReady: false }
 
-    const replyReady = canonicalMessages
-      .slice(acceptedIndex + 1)
-      .some((message) => message.role === 'assistant')
+    const replyReady = canonicalMessages.some(
+      (message) => message.role === 'assistant' && messageClientId(message) === clientMessageId,
+    )
     if (!disposed && active.value?.id === sessionId) {
       applyConversation(data, { moveToFront: true })
       await scrollBottom()
@@ -264,7 +268,12 @@ async function send(textOverride = '') {
     }
     await scrollBottom()
   } catch (error) {
-    const reconciled = await reconcileFailedSend(sessionId, clientMessageId)
+    let reconciled = await reconcileFailedSend(sessionId, clientMessageId)
+    for (let attempt = 0; reconciled.accepted && !reconciled.replyReady && attempt < 6; attempt += 1) {
+      await wait(2000)
+      if (disposed) return
+      reconciled = await reconcileFailedSend(sessionId, clientMessageId)
+    }
     if (disposed) return
     if (reconciled.accepted) {
       const message = t(reconciled.replyReady ? 'talk.sendRecovered' : 'talk.sendAccepted')

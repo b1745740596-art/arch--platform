@@ -36,6 +36,11 @@ PY
 echo "[entrypoint] applying migrations ..."
 python manage.py migrate --noinput
 
+# 新容器启动意味着旧 worker 已停止；安全恢复被发布/重启中断的 TalkBot 轮次。
+echo "[entrypoint] recovering interrupted TalkBot turns ..."
+python manage.py recover_talkbot_turns --max-age-minutes 10080 || \
+  echo "[entrypoint] warning: TalkBot turn recovery failed" >&2
+
 echo "[entrypoint] collecting static files ..."
 python manage.py collectstatic --noinput
 

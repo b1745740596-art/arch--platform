@@ -177,7 +177,13 @@ class TalkBotApiTests(APITestCase):
             'content': '谢谢，很专业。我在上海，89平，想要现代简约。',
             'client_message_id': 'turn-atomic-0001',
         }
-        with patch('talkbot.engine._safe_reply', side_effect=RuntimeError('finalize failed')):
+        with (
+            patch('talkbot.engine._safe_reply', side_effect=RuntimeError('finalize failed')),
+            patch(
+                'talkbot.engine._persist_recovery_reply',
+                side_effect=RuntimeError('recovery failed'),
+            ),
+        ):
             with self.assertRaises(RuntimeError):
                 self.client.post(
                     f'{SESSIONS_URL}{session_id}/messages/', payload, format='json',
@@ -229,6 +235,34 @@ class TalkBotApiTests(APITestCase):
             Message.objects.filter(
                 conversation_id=session_id,
                 client_id='turn-atomic-0001',
+            ).count(),
+            2,
+        )
+
+    def test_failed_finalization_returns_persisted_recovery_reply(self):
+        session_id = self.create_session().data['id']
+        payload = {
+            'content': '我在上海，89平，想要现代简约。',
+            'client_message_id': 'turn-recovery-0001',
+        }
+        with patch('talkbot.engine._safe_reply', side_effect=RuntimeError('finalize failed')):
+            response = self.client.post(
+                f'{SESSIONS_URL}{session_id}/messages/', payload, format='json',
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message']['metadata']['reply_source'], 'recovery')
+        self.assertIn('消息已保存', response.data['message']['content'])
+        conversation = Conversation.objects.get(pk=session_id)
+        profile = conversation.profile
+        self.assertFalse(conversation.is_processing)
+        self.assertIsNone(conversation.processing_started_at)
+        self.assertEqual(profile.city, '')
+        self.assertIsNone(profile.area)
+        self.assertEqual(
+            Message.objects.filter(
+                conversation_id=session_id,
+                client_id='turn-recovery-0001',
             ).count(),
             2,
         )
@@ -388,15 +422,16 @@ class TalkBotApiTests(APITestCase):
         self.assertNotIn('你是 Arch AI 的家装顾问', response.data['message']['content'])
         self.assertTrue(response.data['message']['metadata']['grounding_fallback'])
 
-    def test_workflow_resolution_failure_releases_processing_lease(self):
+    def test_workflow_resolution_failure_recovers_reply_and_releases_lease(self):
         session_id = self.create_session().data['id']
         with patch('talkbot.engine._steps', side_effect=RuntimeError('workflow unavailable')):
-            with self.assertRaises(RuntimeError):
-                self.client.post(
-                    f'{SESSIONS_URL}{session_id}/messages/',
-                    {'content': '继续', 'client_message_id': 'turn-error-0001'},
-                    format='json',
-                )
+            response = self.client.post(
+                f'{SESSIONS_URL}{session_id}/messages/',
+                {'content': '继续', 'client_message_id': 'turn-error-0001'},
+                format='json',
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['message']['metadata']['reply_source'], 'recovery')
         conversation = Conversation.objects.get(pk=session_id)
         self.assertFalse(conversation.is_processing)
         self.assertIsNone(conversation.processing_started_at)
@@ -640,6 +675,46 @@ class TalkBotProfileRepairCommandTests(APITestCase):
             stdout=second_output,
         )
         self.assertIn('已应用：检查=1，差异=0，更新=0', second_output.getvalue())
+
+
+class TalkBotTurnRecoveryCommandTests(APITestCase):
+    def setUp(self):
+        user = User.objects.create_user(username='turn-recovery-user', password='secret123')
+        self.conversation = Conversation.objects.create(
+            user=user,
+            is_processing=True,
+        )
+        self.message = Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.USER,
+            client_id='startup-recovery-0001',
+            content='上海，89平。',
+        )
+
+    def test_recovery_command_clears_lease_and_replies_once(self):
+        first_output = StringIO()
+        call_command('recover_talkbot_turns', stdout=first_output)
+
+        self.conversation.refresh_from_db()
+        self.assertFalse(self.conversation.is_processing)
+        reply = Message.objects.get(
+            conversation=self.conversation,
+            role=Message.Role.ASSISTANT,
+            client_id=self.message.client_id,
+        )
+        self.assertEqual(reply.metadata['reply_source'], 'recovery')
+        self.assertIn('租约清理=1，中断轮次恢复=1', first_output.getvalue())
+
+        second_output = StringIO()
+        call_command('recover_talkbot_turns', stdout=second_output)
+        self.assertIn('租约清理=0，中断轮次恢复=0', second_output.getvalue())
+        self.assertEqual(
+            Message.objects.filter(
+                conversation=self.conversation,
+                client_id=self.message.client_id,
+            ).count(),
+            2,
+        )
 
 
 class DeepSeekLLMTests(APITestCase):

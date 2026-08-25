@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import re
 import time
-import hashlib
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -26,6 +27,14 @@ from design.services import build_preview_schemes
 
 from . import empathy, llm, psychology, rag, strategy
 from .models import Conversation, CustomerProfile, Message, TalkStep, TalkWorkflow
+
+
+logger = logging.getLogger(__name__)
+
+RECOVERY_REPLY = (
+    '您的消息已保存。刚才回复生成被中断，我已经恢复本次对话。'
+    '请继续告诉我装修城市、面积、预算或风格中的任意一项，我会接着为您整理。'
+)
 
 
 BUILTIN_STEPS = (
@@ -162,6 +171,76 @@ def _profile_summary(profile: CustomerProfile) -> str:
     if profile.pain_points:
         facts.append('顾虑=' + '、'.join(profile.pain_points[:3]))
     return '；'.join(facts)
+
+
+def _persist_recovery_reply(
+    conversation_id: int,
+    client_id: str,
+    *,
+    expected_lease_at=None,
+    workflow_log: list[dict] | None = None,
+    error_type: str = 'InterruptedTurn',
+) -> Message | None:
+    """Persist a minimal reply when normal finalization is interrupted.
+
+    The fallback deliberately avoids mutating the customer profile or stage. This
+    keeps retries safe even when the original transaction failed halfway through.
+    """
+    recovery_log = [*(workflow_log or []), {
+        'order': 999,
+        'kind': 'recovery',
+        'name': '中断恢复',
+        'status': 'recovered',
+        'detail': error_type[:100],
+        'elapsed_ms': 0,
+    }]
+    with transaction.atomic():
+        conversation = Conversation.objects.select_for_update().get(pk=conversation_id)
+        existing_reply = conversation.messages.filter(
+            role=Message.Role.ASSISTANT,
+            client_id=client_id,
+        ).first()
+        if existing_reply:
+            if conversation.is_processing:
+                conversation.is_processing = False
+                conversation.processing_started_at = None
+                conversation.save(update_fields=[
+                    'is_processing', 'processing_started_at', 'updated_at',
+                ])
+            return existing_reply
+        if (
+            expected_lease_at is not None
+            and conversation.processing_started_at != expected_lease_at
+        ):
+            return None
+        user_message = conversation.messages.filter(
+            role=Message.Role.USER,
+            client_id=client_id,
+        ).first()
+        if user_message is None:
+            return None
+        reply = Message.objects.create(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT,
+            content=RECOVERY_REPLY,
+            client_id=client_id,
+            emotion=user_message.emotion,
+            metadata={
+                'reply_source': 'recovery',
+                'generation_status': 'recovered',
+                'generation_error': error_type[:100],
+                'workflow_log': recovery_log,
+            },
+        )
+        if not conversation.title:
+            conversation.title = user_message.content[:40]
+        conversation.workflow_log = recovery_log
+        conversation.is_processing = False
+        conversation.processing_started_at = None
+        conversation.save(update_fields=[
+            'title', 'workflow_log', 'is_processing', 'processing_started_at', 'updated_at',
+        ])
+        return reply
 
 
 def _rule_reply(context: TurnContext) -> str:
@@ -668,6 +747,32 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
                 'is_processing', 'processing_started_at', 'updated_at',
             ])
         return context.assistant_message
+    except Exception as exc:  # noqa: BLE001 - a saved user turn must receive a reply
+        logger.exception(
+            'TalkBot turn finalization failed: conversation_id=%s client_id=%s error=%s',
+            conversation.pk,
+            client_id,
+            type(exc).__name__,
+        )
+        try:
+            recovery_reply = _persist_recovery_reply(
+                conversation.pk,
+                client_id,
+                expected_lease_at=lease_started_at,
+                workflow_log=logs,
+                error_type=type(exc).__name__,
+            )
+        except Exception as recovery_exc:  # noqa: BLE001 - preserve the original failure
+            logger.exception(
+                'TalkBot recovery reply failed: conversation_id=%s client_id=%s error=%s',
+                conversation.pk,
+                client_id,
+                type(recovery_exc).__name__,
+            )
+            raise exc from recovery_exc
+        if recovery_reply is not None:
+            return recovery_reply
+        raise
     finally:
         # Compare the lease timestamp so this cleanup can never clear a newer turn.
         if lease_started_at is not None:
