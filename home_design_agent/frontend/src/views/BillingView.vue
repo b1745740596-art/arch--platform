@@ -126,7 +126,9 @@ const statusType = (status) => ({ paid: 'success', pending: 'warning', failed: '
             <b>{{ currencySymbol(plan.currency) }}{{ plan.price.toFixed(2) }}</b>
             <span> / {{ plan.credits }} {{ t('billing.creditsUnit') }}</span>
           </div>
-          <el-button type="primary" plain @click="openPay(plan)">{{ t('billing.rechargeNow') }}</el-button>
+          <el-button type="primary" class="purchase-button" @click="openPay(plan)">
+            {{ t('billing.rechargeNow') }}
+          </el-button>
         </div>
       </div>
     </section>
@@ -239,6 +241,12 @@ h2 { margin: 0; font-size: 20px; }
 .plan-price { margin-bottom: 18px; }
 .plan-price b { font-size: 26px; }
 .plan-price span { color: var(--brand-muted); font-size: 12px; }
+.purchase-button {
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+  --el-button-active-text-color: #fff;
+  color: #fff;
+}
 .pay-body { padding: 4px 2px; }
 .pay-plan { display: flex; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--app-border); }
 .pay-plan span { color: var(--brand-muted); font-size: 13px; }
