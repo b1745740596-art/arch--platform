@@ -157,6 +157,14 @@ App 底部「AI 顾问」与 Web `/talk` 已接入多轮谈单链路：
 
 基础知识库和默认流程由迁移自动写入，也可幂等刷新：`python manage.py seed_talkbot`。TalkBot 文本模型接入 DeepSeek 官方 OpenAI-compatible API：优先读取后台“生成配置(API)”中的谈单机器人配置，未填写后台 Key 时回退服务器 Secret 或 `.env`；默认模型是低延迟的 `deepseek-v4-flash`，可切换为 `deepseek-v4-pro`。未启用、配置错误或接口超时时自动回退规则回复。消息接口支持 `client_message_id` 幂等重试，发送给模型的历史消息先脱敏，模型回复还会经过数字事实 grounding 与合规过滤。
 
+画像更新、销售阶段和机器人回复在最终事务中原子提交，失败重试不会重复累加信任度、
+意向度或情绪轨迹。历史数据可先只读审计，再在备份后按需修复：
+
+```bash
+python manage.py repair_talkbot_profiles --dry-run
+python manage.py repair_talkbot_profiles --apply
+```
+
 ## 支付与额度
 
 效果图生成为按次计费：每位用户一次性赠送 5 次免费额度（`PAYMENT_FREE_CREDITS`，默认 5），

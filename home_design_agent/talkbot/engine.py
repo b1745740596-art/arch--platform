@@ -73,6 +73,8 @@ class TurnContext:
     grounding_fallback: bool = False
     unsupported_facts: list[str] | None = None
     assistant_message: Message | None = None
+    profile_update_completed: bool = False
+    stage_update_completed: bool = False
 
 
 def _initial_profile_values(user) -> dict:
@@ -122,14 +124,16 @@ def _steps():
 
 
 def _merge_profile(profile: CustomerProfile, updates: dict, analysis: dict) -> None:
+    """Apply one turn to an in-memory profile without persisting side effects."""
+    effective_updates = dict(updates or {})
     try:
         bound_phone = profile.conversation.user.profile.phone or ''
     except Exception:  # noqa: BLE001 - legacy users may not have a profile yet
         bound_phone = ''
     if bound_phone:
         # Verified account binding is authoritative; chat text cannot replace it.
-        updates['phone'] = bound_phone
-    for field, value in updates.items():
+        effective_updates['phone'] = bound_phone
+    for field, value in effective_updates.items():
         if field == 'recent_events':
             value = list(dict.fromkeys([*(profile.recent_events or []), *value]))
         setattr(profile, field, value)
@@ -145,7 +149,6 @@ def _merge_profile(profile: CustomerProfile, updates: dict, analysis: dict) -> N
     trace.append({'emotion': profile.emotion, 'intent': analysis.get('intent', 'chat')})
     profile.emotion_trace = trace
     profile.missing_fields = strategy.missing_fields(profile)
-    profile.save()
 
 
 def _profile_summary(profile: CustomerProfile) -> str:
@@ -443,17 +446,16 @@ def _run_step(step, context: TurnContext) -> str:
         context.analysis = context.analysis or psychology.analyze(context.text, context.profile.emotion)
         context.updates = empathy.extract_profile_updates(context.text)
         _merge_profile(context.profile, context.updates, context.analysis)
+        context.profile_update_completed = True
         return '更新=' + ('、'.join(context.updates) if context.updates else '无显式事实')
     if kind == TalkStep.Kind.STAGE_JUDGE:
         context.analysis = context.analysis or psychology.analyze(context.text, context.profile.emotion)
         context.conversation.stage = strategy.judge_stage(
             context.conversation, context.profile, context.analysis['intent'],
         )
-        update_fields = ['stage', 'updated_at']
         if context.analysis['intent'] == 'opt_out':
             context.conversation.status = Conversation.Status.CLOSED
-            update_fields.append('status')
-        context.conversation.save(update_fields=update_fields)
+        context.stage_update_completed = True
         return f'阶段={context.conversation.stage}'
     if kind == TalkStep.Kind.STRATEGY_PLAN:
         context.analysis = context.analysis or psychology.analyze(context.text, context.profile.emotion)
@@ -604,6 +606,24 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
 
         with transaction.atomic():
             conversation = Conversation.objects.select_for_update().get(pk=conversation.pk)
+            existing_reply = conversation.messages.filter(
+                role=Message.Role.ASSISTANT,
+                client_id=client_id,
+            ).first()
+            if existing_reply:
+                return existing_reply
+            if conversation.processing_started_at != lease_started_at:
+                raise ValueError('本轮处理租约已失效，请使用相同消息标识重试。')
+
+            profile = (
+                CustomerProfile.objects.select_for_update()
+                .select_related('conversation__user__profile')
+                .get(conversation=conversation)
+            )
+            if context.profile_update_completed:
+                _merge_profile(profile, context.updates or {}, context.analysis or {})
+                profile.save()
+            context.profile = profile
             context.reply = _safe_reply(context)
             context.assistant_message = Message.objects.create(
                 conversation=conversation,
@@ -635,14 +655,16 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
             }
             user_message.save(update_fields=['intent', 'emotion', 'metadata', 'updated_at'])
             conversation.title = context.conversation.title
-            conversation.stage = context.conversation.stage
+            if context.stage_update_completed:
+                conversation.stage = context.conversation.stage
+                conversation.status = context.conversation.status
             conversation.last_action = (context.plan or {}).get('action', '')
             conversation.summary = _profile_summary(profile)
             conversation.workflow_log = logs
             conversation.is_processing = False
             conversation.processing_started_at = None
             conversation.save(update_fields=[
-                'title', 'stage', 'last_action', 'summary', 'workflow_log',
+                'title', 'stage', 'status', 'last_action', 'summary', 'workflow_log',
                 'is_processing', 'processing_started_at', 'updated_at',
             ])
         return context.assistant_message

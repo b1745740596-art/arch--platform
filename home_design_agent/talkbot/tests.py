@@ -1,8 +1,10 @@
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
 from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
@@ -168,6 +170,68 @@ class TalkBotApiTests(APITestCase):
         )
         self.assertEqual(conflict.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('不能用于不同内容', str(conflict.data))
+
+    def test_failed_finalization_rolls_back_profile_and_retry_applies_once(self):
+        session_id = self.create_session().data['id']
+        payload = {
+            'content': '谢谢，很专业。我在上海，89平，想要现代简约。',
+            'client_message_id': 'turn-atomic-0001',
+        }
+        with patch('talkbot.engine._safe_reply', side_effect=RuntimeError('finalize failed')):
+            with self.assertRaises(RuntimeError):
+                self.client.post(
+                    f'{SESSIONS_URL}{session_id}/messages/', payload, format='json',
+                )
+
+        profile = CustomerProfile.objects.get(conversation_id=session_id)
+        conversation = Conversation.objects.get(pk=session_id)
+        self.assertEqual(profile.city, '')
+        self.assertIsNone(profile.area)
+        self.assertEqual(profile.trust_score, 20)
+        self.assertEqual(profile.intent_score, 20)
+        self.assertEqual(profile.emotion_trace, [])
+        self.assertEqual(conversation.stage, Conversation.Stage.ICEBREAK)
+        self.assertEqual(conversation.status, Conversation.Status.ACTIVE)
+        self.assertFalse(conversation.is_processing)
+        self.assertEqual(
+            Message.objects.filter(
+                conversation_id=session_id,
+                role=Message.Role.USER,
+                client_id='turn-atomic-0001',
+            ).count(),
+            1,
+        )
+        self.assertFalse(
+            Message.objects.filter(
+                conversation_id=session_id,
+                role=Message.Role.ASSISTANT,
+                client_id='turn-atomic-0001',
+            ).exists(),
+        )
+
+        first_retry = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/', payload, format='json',
+        )
+        second_retry = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/', payload, format='json',
+        )
+        self.assertEqual(first_retry.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_retry.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_retry.data['message']['id'], second_retry.data['message']['id'])
+
+        profile.refresh_from_db()
+        self.assertEqual(profile.city, '上海')
+        self.assertEqual(str(profile.area), '89.00')
+        self.assertEqual(profile.trust_score, 27)
+        self.assertEqual(profile.intent_score, 26)
+        self.assertEqual(len(profile.emotion_trace), 1)
+        self.assertEqual(
+            Message.objects.filter(
+                conversation_id=session_id,
+                client_id='turn-atomic-0001',
+            ).count(),
+            2,
+        )
 
     def test_raw_transcript_redacts_personal_identifiers(self):
         session_id = self.create_session().data['id']
@@ -504,6 +568,78 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(response.data['conversation']['status'], Conversation.Status.CLOSED)
         self.assertEqual(response.data['conversation']['last_action'], 'stop')
         self.assertIn('不会根据这次对话联系', response.data['message']['content'])
+
+
+class TalkBotProfileRepairCommandTests(APITestCase):
+    def setUp(self):
+        user = User.objects.create_user(username='repair-user', password='secret123')
+        self.conversation = Conversation.objects.create(user=user)
+        self.profile = CustomerProfile.objects.create(
+            conversation=self.conversation,
+            trust_score=99,
+            intent_score=88,
+            emotion_trace=[
+                {'emotion': 'neutral', 'intent': 'requirement'},
+                {'emotion': 'neutral', 'intent': 'requirement'},
+            ],
+        )
+        for client_id, content in (
+            ('repair-turn-0001', '谢谢，很专业，我想要设计。'),
+            ('repair-turn-0002', '预算多少钱？'),
+        ):
+            Message.objects.create(
+                conversation=self.conversation,
+                role=Message.Role.USER,
+                client_id=client_id,
+                content=content,
+            )
+            Message.objects.create(
+                conversation=self.conversation,
+                role=Message.Role.ASSISTANT,
+                client_id=client_id,
+                content='已回复',
+            )
+        Message.objects.create(
+            conversation=self.conversation,
+            role=Message.Role.USER,
+            client_id='repair-pending-0003',
+            content='这条消息还没有完成处理，谢谢。',
+        )
+
+    def test_repair_command_is_dry_run_by_default_and_apply_is_idempotent(self):
+        dry_output = StringIO()
+        call_command(
+            'repair_talkbot_profiles',
+            dry_run=True,
+            conversation_id=self.conversation.id,
+            stdout=dry_output,
+        )
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.trust_score, 99)
+        self.assertIn('仅审计：检查=1，差异=1，更新=0', dry_output.getvalue())
+        self.assertIn('已完成轮次=2', dry_output.getvalue())
+
+        apply_output = StringIO()
+        call_command(
+            'repair_talkbot_profiles',
+            apply=True,
+            conversation_id=self.conversation.id,
+            stdout=apply_output,
+        )
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.trust_score, 28)
+        self.assertEqual(self.profile.intent_score, 34)
+        self.assertEqual(len(self.profile.emotion_trace), 2)
+        self.assertIn('已应用：检查=1，差异=1，更新=1', apply_output.getvalue())
+
+        second_output = StringIO()
+        call_command(
+            'repair_talkbot_profiles',
+            apply=True,
+            conversation_id=self.conversation.id,
+            stdout=second_output,
+        )
+        self.assertIn('已应用：检查=1，差异=0，更新=0', second_output.getvalue())
 
 
 class DeepSeekLLMTests(APITestCase):
