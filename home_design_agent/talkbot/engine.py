@@ -694,10 +694,11 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
             if conversation.processing_started_at != lease_started_at:
                 raise ValueError('本轮处理租约已失效，请使用相同消息标识重试。')
 
-            profile = (
-                CustomerProfile.objects.select_for_update()
-                .select_related('conversation__user__profile')
-                .get(conversation=conversation)
+            # PostgreSQL rejects SELECT FOR UPDATE when the query also locks the
+            # nullable side of an outer join. The reverse user.profile relation is
+            # optional, so load it lazily instead of joining it into the lock query.
+            profile = CustomerProfile.objects.select_for_update().get(
+                conversation=conversation,
             )
             if context.profile_update_completed:
                 _merge_profile(profile, context.updates or {}, context.analysis or {})
