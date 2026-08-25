@@ -12,11 +12,15 @@ CITY_NAMES = (
     '北京', '上海', '广州', '深圳', '杭州', '成都', '重庆', '武汉', '南京', '苏州',
     '西安', '天津', '长沙', '青岛', '郑州', '宁波', '佛山', '东莞', '合肥', '厦门',
 )
+UNKNOWN_ANSWERS = ('不知道', '不清楚', '不确定', '没想好', '还没想好', '暂时不清楚')
+CHINESE_MONTH = (
+    r'(?:今年|明年|后年)?(?:1[0-2]|0?[1-9]|十[一二]?|[一二三四五六七八九])月份?'
+)
 
 
 def _money(value: str, unit: str) -> int:
     amount = float(value)
-    if unit == '万':
+    if unit.lower() in ('万', 'w'):
         amount *= 10_000
     elif unit == '千':
         amount *= 1_000
@@ -26,8 +30,8 @@ def _money(value: str, unit: str) -> int:
 def _extract_budget(text: str) -> tuple[int | None, int | None]:
     range_match = re.search(
         r'(?:(预算|费用|总价|装修款|控制在|准备花|大概花)\s*)?'
-        r'(\d+(?:\.\d+)?)\s*(万|千|元)?\s*'
-        r'(?:到|至|[-~—－])\s*(\d+(?:\.\d+)?)\s*(万|千|元)?',
+        r'(\d+(?:\.\d+)?)\s*(万|千|元|[wW])?\s*'
+        r'(?:到|至|[-~—－])\s*(\d+(?:\.\d+)?)\s*(万|千|元|[wW])?',
         text,
     )
     if range_match:
@@ -48,18 +52,78 @@ def _extract_budget(text: str) -> tuple[int | None, int | None]:
 
     single = re.search(
         r'(?:预算|费用|总价|装修款|控制在|大概|准备花|不超过|最多)\s*'
-        r'(\d+(?:\.\d+)?)\s*(万|千|元)?',
+        r'(\d+(?:\.\d+)?)\s*(万|千|元|[wW])?',
         text,
     )
     if single:
-        if not single.group(2) and float(single.group(1)) < 10_000:
+        value = single.group(1)
+        unit = single.group(2) or ''
+        if not unit and float(value) < 10_000:
             return None, None
-        maximum = _money(single.group(1), single.group(2) or '')
+        maximum = _money(value, unit)
+        return (int(maximum * 0.7), maximum)
+    explicit_unit = re.search(
+        r'(?<!\d)(\d+(?:\.\d+)?)\s*(万|千|元|[wW])(?![A-Za-z\d])',
+        text,
+    )
+    if explicit_unit:
+        maximum = _money(explicit_unit.group(1), explicit_unit.group(2))
         return (int(maximum * 0.7), maximum)
     return None, None
 
 
-def extract_profile_updates(text: str) -> dict:
+def _contextual_profile_update(text: str, expected_field: str) -> dict:
+    """Interpret a terse answer only in the slot explicitly asked last turn."""
+    compact = re.sub(r'\s+', '', (text or '').strip())
+    if not compact or any(answer in compact for answer in UNKNOWN_ANSWERS):
+        return {}
+
+    if expected_field == 'area':
+        match = re.fullmatch(
+            r'(?:大概|约|差不多)?(\d+(?:\.\d+)?)(?:平米|平方米|㎡|平)?(?:左右)?',
+            compact,
+        )
+        if match:
+            area = Decimal(match.group(1))
+            if Decimal('10') <= area <= Decimal('1000'):
+                return {'area': area}
+
+    if expected_field == 'budget_max':
+        normalized = compact.lower().replace('w', '万')
+        bare_range = re.fullmatch(
+            r'(\d+(?:\.\d+)?)(?:到|至|[-~—－])(\d+(?:\.\d+)?)',
+            normalized,
+        )
+        bare_single = re.fullmatch(r'(\d+(?:\.\d+)?)', normalized)
+        if bare_range and max(float(bare_range.group(1)), float(bare_range.group(2))) <= 1000:
+            normalized += '万'
+        elif bare_single and float(bare_single.group(1)) <= 1000:
+            normalized += '万'
+        budget_min, budget_max = _extract_budget(f'预算{normalized}')
+        if budget_min is not None:
+            return {'budget_min': budget_min, 'budget_max': budget_max}
+
+    if expected_field == 'desired_timeline' and re.fullmatch(
+        rf'{CHINESE_MONTH}(?:左右|前|后)?',
+        compact,
+    ):
+        return {'desired_timeline': compact}
+
+    if expected_field == 'household':
+        family_size = re.fullmatch(r'(?:一家|家里)?([一二两三四五六七八九\d]+)口(?:人|之家)?', compact)
+        if family_size:
+            return {'household': f'{family_size.group(1)}口之家'}
+
+    if expected_field == 'name' and re.fullmatch(
+        r'[\u4e00-\u9fa5·]{1,6}|[A-Za-z][A-Za-z .-]{0,20}',
+        compact,
+    ):
+        return {'name': compact}
+
+    return {}
+
+
+def extract_profile_updates(text: str, *, expected_field: str = '') -> dict:
     """Extract only facts explicitly present in the user's message."""
     text = (text or '').strip()
     updates: dict = {}
@@ -161,7 +225,7 @@ def extract_profile_updates(text: str) -> dict:
         updates['situation'] = '近期事件：' + '、'.join(events)
 
     timeline_match = re.search(
-        r'((?:\d{1,2}月|[一二三四五六七八九十\d]+个?月后|年底|年前|年后|春节前|国庆前|婚期前|开学前|尽快)'
+        rf'((?:{CHINESE_MONTH}|[一二三四五六七八九十\d]+个?月后|年底|年前|年后|春节前|国庆前|婚期前|开学前|尽快)'
         r'[^，。,.]{0,12}(?:入住|完工|装好)?)',
         text,
     )
@@ -177,6 +241,8 @@ def extract_profile_updates(text: str) -> dict:
         updates['consent_to_contact'] = False
     elif any(word in text for word in ('可以联系我', '同意联系', '愿意留电话', '请联系我', '预约量房')):
         updates['consent_to_contact'] = True
+    if expected_field and expected_field not in updates:
+        updates.update(_contextual_profile_update(text, expected_field))
     return updates
 
 

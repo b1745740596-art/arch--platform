@@ -151,6 +151,52 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(assistant.metadata['generation_status'], 'disabled')
         self.assertEqual(assistant.metadata['workflow_log'], conversation.workflow_log)
 
+    def test_terse_answers_follow_the_last_question_and_advance_profile(self):
+        session_id = self.create_session().data['id']
+        turns = (
+            ('上海', 'area'),
+            ('30', 'household'),
+            ('一家三口，有孩子', 'style'),
+            ('原木风', 'budget_max'),
+            ('5w', 'desired_timeline'),
+            ('十月', ''),
+        )
+        for content, next_field in turns:
+            response = self.client.post(
+                f'{SESSIONS_URL}{session_id}/messages/',
+                {'content': content},
+                format='json',
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(
+                response.data['message']['question_asked'],
+                next_field,
+                response.data,
+            )
+
+        profile = response.data['profile']
+        self.assertEqual(profile['city'], '上海')
+        self.assertEqual(profile['area'], '30.00')
+        self.assertEqual(profile['household'], '三口之家、有孩子')
+        self.assertEqual(profile['style'], '原木')
+        self.assertEqual(profile['budget_max'], 50000)
+        self.assertEqual(profile['desired_timeline'], '十月')
+        user_turns = Message.objects.filter(
+            conversation_id=session_id,
+            role=Message.Role.USER,
+        ).order_by('id')
+        self.assertEqual(user_turns[1].metadata['expected_field'], 'area')
+        self.assertIn('area', user_turns[1].metadata['profile_updates'])
+
+        unrelated_number = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '40'},
+            format='json',
+        )
+        self.assertEqual(unrelated_number.status_code, status.HTTP_200_OK)
+        self.assertEqual(unrelated_number.data['profile']['area'], '30.00')
+        self.assertEqual(unrelated_number.data['user_message']['metadata']['expected_field'], '')
+
     def test_message_request_is_idempotent_by_client_id(self):
         session_id = self.create_session().data['id']
         payload = {'content': '我在上海，89平。', 'client_message_id': 'turn-fixed-0001'}
@@ -879,6 +925,25 @@ class ProfileExtractionTests(APITestCase):
         self.assertEqual(extract_profile_updates('20到30万比较合适')['budget_min'], 200000)
         self.assertNotIn('budget_max', extract_profile_updates('预算20到30'))
         self.assertNotIn('budget_max', extract_profile_updates('预算30'))
+
+    def test_contextual_short_answers_fill_only_the_requested_slot(self):
+        self.assertNotIn('area', extract_profile_updates('30'))
+        self.assertEqual(
+            extract_profile_updates('30', expected_field='area')['area'],
+            30,
+        )
+        self.assertEqual(extract_profile_updates('5w')['budget_max'], 50000)
+        self.assertEqual(
+            extract_profile_updates('30', expected_field='budget_max')['budget_max'],
+            300000,
+        )
+        self.assertEqual(
+            extract_profile_updates('十月', expected_field='desired_timeline')['desired_timeline'],
+            '十月',
+        )
+        self.assertNotIn('area', extract_profile_updates('5w', expected_field='area'))
+        self.assertNotIn('budget_max', extract_profile_updates('30平', expected_field='budget_max'))
+        self.assertNotIn('area', extract_profile_updates('不知道', expected_field='area'))
 
     def test_identity_and_city_are_not_confused(self):
         updates = extract_profile_updates('我是上海人，准备装修')

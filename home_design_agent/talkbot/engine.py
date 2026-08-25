@@ -71,6 +71,7 @@ class TurnContext:
     profile: CustomerProfile
     text: str
     client_id: str = ''
+    expected_field: str = ''
     analysis: dict | None = None
     updates: dict | None = None
     plan: dict | None = None
@@ -523,7 +524,10 @@ def _run_step(step, context: TurnContext) -> str:
         return f'意图={context.analysis["intent"]}'
     if kind == TalkStep.Kind.PROFILE_UPDATE:
         context.analysis = context.analysis or psychology.analyze(context.text, context.profile.emotion)
-        context.updates = empathy.extract_profile_updates(context.text)
+        context.updates = empathy.extract_profile_updates(
+            context.text,
+            expected_field=context.expected_field,
+        )
         _merge_profile(context.profile, context.updates, context.analysis)
         context.profile_update_completed = True
         return '更新=' + ('、'.join(context.updates) if context.updates else '无显式事实')
@@ -631,6 +635,13 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
             conversation=conversation,
             defaults=_initial_profile_values(conversation.user),
         )
+        expected_field = (
+            conversation.messages.filter(role=Message.Role.ASSISTANT)
+            .order_by('-id')
+            .values_list('question_asked', flat=True)
+            .first()
+            or ''
+        )
         user_message = existing_user_message
         if user_message:
             if user_message.metadata.get('content_hash') != content_hash:
@@ -651,6 +662,7 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
         profile=profile,
         text=text,
         client_id=client_id,
+        expected_field=expected_field,
     )
     logs = []
     try:
@@ -731,6 +743,7 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
             user_message.emotion = profile.emotion
             user_message.metadata = {
                 **(user_message.metadata or {}),
+                'expected_field': context.expected_field,
                 'profile_updates': list((context.updates or {}).keys()),
             }
             user_message.save(update_fields=['intent', 'emotion', 'metadata', 'updated_at'])
