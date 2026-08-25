@@ -1,13 +1,36 @@
 import tempfile
 from pathlib import Path
 
+from django.conf import settings
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from design.models import Designer, DesignScheme, Furniture, Project, RenderJob
 from users.models import UserProfile
+
+
+class AdminMenuTests(SimpleTestCase):
+    def test_every_registered_admin_page_is_in_the_sidebar(self):
+        configured_urls = {
+            item['url']
+            for group in settings.SIMPLEUI_CONFIG['menus']
+            for item in group.get('models', ())
+        }
+        registered_urls = {
+            reverse(
+                f'admin:{model._meta.app_label}_{model._meta.model_name}_changelist',
+            )
+            for model in admin.site._registry
+        }
+
+        self.assertSetEqual(configured_urls, registered_urls)
+
+    def test_every_sidebar_group_is_enabled(self):
+        group_names = [group['name'] for group in settings.SIMPLEUI_CONFIG['menus']]
+        self.assertEqual(settings.SIMPLEUI_CONFIG['menu_display'], group_names)
 
 
 class PrivateMediaTests(TestCase):

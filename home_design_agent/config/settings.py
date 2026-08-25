@@ -391,7 +391,7 @@ SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
 # 自定义左侧菜单，按 PRD 功能域组织
 SIMPLEUI_CONFIG = {
     'system_keep': True,
-    'menu_display': ['梦想家', '工作流', '用户管理', '支付管理'],
+    'menu_display': ['梦想家', '工作流', '谈单机器人', '用户管理', '支付管理'],
     'dynamic': False,
     'menus': [
         {
@@ -406,8 +406,12 @@ SIMPLEUI_CONFIG = {
                 {'name': '设计师', 'icon': 'fas fa-user-pen', 'url': '/admin/design/designer/'},
                 {'name': '服务商/施工队', 'icon': 'fas fa-store', 'url': '/admin/design/serviceprovider/'},
                 {'name': '线索留资', 'icon': 'fas fa-address-book', 'url': '/admin/design/lead/'},
+                {'name': '用户需求收集', 'icon': 'fas fa-clipboard-list', 'url': '/admin/design/customerrequirement/'},
+                {'name': '我的家报告书', 'icon': 'fas fa-file-alt', 'url': '/admin/design/homereport/'},
+                {'name': '我的家项目订单', 'icon': 'fas fa-shopping-cart', 'url': '/admin/design/homeorder/'},
                 {'name': '订单详情', 'icon': 'fas fa-file-invoice', 'url': '/admin/design/orderdetail/'},
                 {'name': '生成配置(API)', 'icon': 'fas fa-key', 'url': '/admin/design/generationconfig/'},
+                {'name': 'Prompt 控制模块', 'icon': 'fas fa-sliders-h', 'url': '/admin/design/promptmodule/'},
             ],
         },
         {
@@ -419,6 +423,18 @@ SIMPLEUI_CONFIG = {
             ],
         },
         {
+            'name': '谈单机器人',
+            'icon': 'fas fa-robot',
+            'models': [
+                {'name': '谈单会话', 'icon': 'fas fa-comments', 'url': '/admin/talkbot/conversation/'},
+                {'name': '谈单客户画像', 'icon': 'fas fa-user-tag', 'url': '/admin/talkbot/customerprofile/'},
+                {'name': '谈单工作流', 'icon': 'fas fa-route', 'url': '/admin/talkbot/talkworkflow/'},
+                {'name': '谈单工作流步骤', 'icon': 'fas fa-list-ol', 'url': '/admin/talkbot/talkstep/'},
+                {'name': '谈单知识库', 'icon': 'fas fa-book', 'url': '/admin/talkbot/knowledgebase/'},
+                {'name': '谈单知识文档', 'icon': 'fas fa-file-alt', 'url': '/admin/talkbot/knowledgedocument/'},
+            ],
+        },
+        {
             'name': '用户管理',
             'icon': 'fas fa-users-cog',
             'models': [
@@ -426,6 +442,9 @@ SIMPLEUI_CONFIG = {
                 {'name': '用户组', 'icon': 'fas fa-users', 'url': '/admin/auth/group/'},
                 {'name': '用户资料', 'icon': 'fas fa-id-card', 'url': '/admin/users/userprofile/'},
                 {'name': '重置令牌', 'icon': 'fas fa-key', 'url': '/admin/users/passwordresettoken/'},
+                {'name': '持久登录令牌', 'icon': 'fas fa-ticket-alt', 'url': '/admin/users/remembertoken/'},
+                {'name': '短信验证码', 'icon': 'fas fa-sms', 'url': '/admin/users/smsverificationcode/'},
+                {'name': '邮箱验证码', 'icon': 'fas fa-envelope-open-text', 'url': '/admin/users/emailverificationcode/'},
             ],
         },
         {
