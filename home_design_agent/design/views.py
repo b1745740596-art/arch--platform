@@ -36,6 +36,7 @@ from .serializers import (
     LeadSerializer,
     LoginSerializer,
     OwnerSerializer,
+    PromptCoachTurnSerializer,
     ProjectListSerializer,
     ProjectSerializer,
     RegisterSerializer,
@@ -44,6 +45,7 @@ from .serializers import (
     ServiceProviderSerializer,
 )
 from .imagegen import run_render_job
+from .prompt_coach import run_prompt_coach
 from .prompts import option_payload, suggest_variants
 from .services import build_preview_schemes
 from payments.services import consume_generation_credit, refund_generation_credit
@@ -52,6 +54,8 @@ from config.throttles import (
     AuthLoginIPThrottle,
     AuthLoginTargetThrottle,
     AuthRegisterIPThrottle,
+    DesignPromptCoachIPThrottle,
+    DesignPromptCoachUserThrottle,
     DesignRenderIPThrottle,
     DesignRenderUserThrottle,
     DesignSalesIPThrottle,
@@ -110,6 +114,16 @@ def showcase_images(request):
             break
 
     return Response({'images': images})
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@throttle_classes([DesignPromptCoachUserThrottle, DesignPromptCoachIPThrottle])
+def prompt_coach_turn(request):
+    """Return the App designer's next two-sentence SOP turn and form patch."""
+    serializer = PromptCoachTurnSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    return Response(run_prompt_coach(serializer.validated_data))
 
 
 @api_view(['GET'])

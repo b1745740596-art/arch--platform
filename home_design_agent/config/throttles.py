@@ -76,6 +76,14 @@ class DesignRenderIPThrottle(_IPThrottle):
     scope = 'design_render_ip'
 
 
+class DesignPromptCoachUserThrottle(UserRateThrottle):
+    scope = 'design_prompt_coach_user'
+
+
+class DesignPromptCoachIPThrottle(_IPThrottle):
+    scope = 'design_prompt_coach_ip'
+
+
 class DesignSalesUserThrottle(UserRateThrottle):
     scope = 'design_sales_user'
 

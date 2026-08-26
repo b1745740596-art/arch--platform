@@ -231,6 +231,14 @@ curl -fsS https://<域名>/api/talkbot/health/
 - `GET /api/design/prompt-modules/suggest/?room_type=&style=&budget_tier=` 返回「发散选项」，
   每套方案给出一组模块组合，可一键套用或分别开窗并行生成
 
+App 端在生图区域下方提供紧凑的「设计师」对话框，每次只展示最新两句话。设计师按
+上传照片 → 空间/风格/预算 → 使用需求 → 氛围 → 保留/避让要求 → 生成确认的固定 SOP
+推进，并把用户回答安全回填到现有生图字段；它不会自动触发生图或扣除额度。
+
+- `POST /api/design/prompt-coach/turn/`：提交当前草稿、SOP 阶段与用户回答，返回两句话、
+  快捷回答、下一阶段和经过白名单校验的 `form_patch`
+- DeepSeek 仅负责润色固定的下一问；模型关闭、配置错误或超时时自动使用规则回复
+
 ## 输入约束（前后端同口径）
 
 `design/prompts.py` 中的 `IMAGE_CONSTRAINTS` / `REQUIREMENT_MAX_LENGTH` / `MAX_MODULES`

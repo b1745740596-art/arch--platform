@@ -294,13 +294,13 @@ class GenerationConfigAdmin(admin.ModelAdmin):
         'talkbot_enabled', 'talkbot_key_configured', 'updated_at',
     )
     fieldsets = (
-        ('谈单机器人（DeepSeek 文本 API）', {
+        ('智能对话（设计师 / TalkBot，DeepSeek 文本 API）', {
             'fields': (
                 'talkbot_enabled', 'talkbot_api_base', 'talkbot_api_key',
                 'clear_talkbot_api_key', 'talkbot_model',
             ),
             'description': (
-                '供 App 内 TalkBot 使用，与设计说明和效果图接口相互独立。'
+                '供 App 内设计师和 TalkBot 共用，与设计说明和效果图接口相互独立。'
                 '填写 Key 后勾选启用；保存后 Key 不会回显。'
             ),
         }),

@@ -381,6 +381,34 @@ class RenderJobSerializer(serializers.ModelSerializer):
         return ','.join(codes)
 
 
+class PromptCoachTurnSerializer(serializers.Serializer):
+    """One compact App-side designer turn plus the current render draft."""
+
+    message = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True, max_length=500,
+    )
+    stage = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True, max_length=30,
+    )
+    completed_stages = serializers.ListField(
+        child=serializers.CharField(max_length=30), required=False, max_length=12,
+    )
+    history = serializers.ListField(
+        child=serializers.DictField(), required=False, max_length=12,
+    )
+    draft = serializers.JSONField(required=False)
+    locale = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True, max_length=20,
+    )
+
+    def validate_draft(self, value):
+        if value in (None, ''):
+            return {}
+        if not isinstance(value, dict):
+            raise serializers.ValidationError('生图草稿格式无效。')
+        return value
+
+
 User = get_user_model()
 
 

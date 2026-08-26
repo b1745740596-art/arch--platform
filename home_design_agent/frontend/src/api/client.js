@@ -150,6 +150,7 @@ export const api = {
   getPromptOptions: () => client.get('/prompt-modules/options/'),
   // 按 room_type + style + budget_tier 给出发散方案建议
   suggestPromptVariants: (params) => client.get('/prompt-modules/suggest/', { params }),
+  promptCoachTurn: (data) => client.post('/prompt-coach/turn/', data),
   // 生图工作流（后台编排，前端只读；mode 区分图生图 / 文生图）
   listWorkflows: () => client.get('/workflows/'),
   // 用户需求收集

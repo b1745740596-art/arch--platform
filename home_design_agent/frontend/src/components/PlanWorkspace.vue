@@ -7,7 +7,8 @@ import { api } from '@/api/client'
 import { useStudioStore } from '@/stores/studio'
 import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
-import { validateImageFile } from '@/utils/validation'
+import { clampModuleCodes, validateImageFile } from '@/utils/validation'
+import DesignCoach from '@/components/DesignCoach.vue'
 
 const router = useRouter()
 const studio = useStudioStore()
@@ -100,6 +101,27 @@ function moduleName(code) {
 
 function rollPack() {
   draft.moduleCodes = rollInspirationPack()
+}
+
+function applyDesignerPatch(patch) {
+  if (!patch || typeof patch !== 'object') return
+  if (studio.options.room_types.includes(patch.room_type)) draft.room_type = patch.room_type
+  if (studio.options.styles.includes(patch.style)) draft.style = patch.style
+  if (studio.options.budget_tiers.includes(patch.budget_tier)) draft.budget_tier = patch.budget_tier
+  if (typeof patch.requirement === 'string') {
+    draft.requirement = patch.requirement.slice(0, studio.requirementMaxLength)
+  }
+  if (Array.isArray(patch.module_codes) && !packLocked.value) {
+    const { codes } = clampModuleCodes(patch.module_codes, {
+      modules: studio.modules,
+      groups: studio.groups,
+      maxModules: studio.maxModules,
+    })
+    draft.moduleCodes = codes
+  }
+  if (patch.workflow_id != null && studio.workflows.some((item) => item.id === patch.workflow_id)) {
+    draft.workflowId = patch.workflow_id
+  }
 }
 
 function recordName(record) {
@@ -533,6 +555,13 @@ async function packageRecords() {
           </el-button>
         </div>
       </div>
+
+      <DesignCoach
+        :draft="draft"
+        :has-images="Boolean(draft.images.length)"
+        :disabled="submitting"
+        @apply-patch="applyDesignerPatch"
+      />
 
       <section class="records-section">
         <div class="records-head">

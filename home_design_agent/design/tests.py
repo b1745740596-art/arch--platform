@@ -1,6 +1,7 @@
 """Design-domain API security regression tests."""
 
 import json
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -22,6 +23,7 @@ from .models import (
     Lead,
     Owner,
     Project,
+    PromptModule,
     RenderJob,
     ServiceProvider,
 )
@@ -437,3 +439,100 @@ class DesignOwnershipIsolationTests(APITestCase):
             with self.subTest(value=value), self.assertRaises(drf_serializers.ValidationError) as caught:
                 serializer.validate_requirement(value)
             self.assertIn('个人信息', str(caught.exception))
+
+
+class DesignPromptCoachTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(username='designer-chat-user', password='secret123')
+        self.client.force_authenticate(self.user)
+        self.base_draft = {
+            'has_images': True,
+            'plan_name': '我家客厅',
+            'room_type': '客厅',
+            'style': '现代简约',
+            'budget_tier': '品质',
+            'requirement': '',
+            'module_codes': [],
+        }
+
+    def post_turn(self, **overrides):
+        payload = {
+            'message': '',
+            'stage': '',
+            'completed_stages': [],
+            'history': [],
+            'draft': dict(self.base_draft),
+            'locale': 'zh-CN',
+        }
+        payload.update(overrides)
+        with patch('design.prompt_coach._refine_with_deepseek', return_value=(None, 'rules')):
+            return self.client.post('/api/design/prompt-coach/turn/', payload, format='json')
+
+    def test_prompt_coach_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/design/prompt-coach/turn/', {}, format='json')
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_prompt_coach_starts_with_upload_when_image_is_missing(self):
+        draft = dict(self.base_draft, has_images=False)
+        response = self.post_turn(draft=draft)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['stage'], 'upload')
+        self.assertIn('设计师', response.data['message'])
+        self.assertFalse(response.data['ready_to_generate'])
+
+    def test_prompt_coach_skips_completed_form_fields_and_asks_one_sop_question(self):
+        response = self.post_turn()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['stage'], 'function')
+        self.assertEqual(response.data['completed_stages'][:4], ['upload', 'room', 'style', 'budget'])
+        self.assertEqual(len(response.data['quick_replies']), 3)
+        self.assertLessEqual(sum(response.data['message'].count(mark) for mark in '。！？'), 2)
+
+    def test_prompt_coach_appends_requirement_and_advances(self):
+        response = self.post_turn(
+            message='三口之家，需要充足收纳',
+            stage='function',
+            completed_stages=['upload', 'room', 'style', 'budget'],
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['stage'], 'atmosphere')
+        self.assertIn('三口之家', response.data['form_patch']['requirement'])
+        self.assertIn('function', response.data['completed_stages'])
+
+    def test_prompt_coach_maps_atmosphere_to_known_prompt_modules(self):
+        for group, code in (
+            (PromptModule.Group.LIGHTING, 'coach-lighting'),
+            (PromptModule.Group.MOOD, 'coach-mood'),
+            (PromptModule.Group.COLOR, 'coach-color'),
+        ):
+            PromptModule.objects.create(
+                code=code,
+                name=code,
+                group=group,
+                prompt_fragment=code,
+                weight=10,
+            )
+        response = self.post_turn(
+            message='明亮温暖',
+            stage='atmosphere',
+            completed_stages=['upload', 'room', 'style', 'budget', 'function'],
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['stage'], 'constraints')
+        self.assertEqual(
+            set(response.data['form_patch']['module_codes']),
+            {'coach-lighting', 'coach-mood', 'coach-color'},
+        )
+
+    def test_prompt_coach_rejects_personal_data_without_advancing(self):
+        response = self.post_turn(
+            message='我的手机号是13800138000，三口之家',
+            stage='function',
+            completed_stages=['upload', 'room', 'style', 'budget'],
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['stage'], 'function')
+        self.assertEqual(response.data['form_patch'], {})
+        self.assertIn('隐私', response.data['message'])

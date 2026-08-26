@@ -29,5 +29,6 @@ urlpatterns = [
     path('auth/me/', views.current_user, name='auth-me'),
     path('prompt-modules/options/', views.prompt_module_options, name='prompt-module-options'),
     path('prompt-modules/suggest/', views.prompt_module_suggest, name='prompt-module-suggest'),
+    path('prompt-coach/turn/', views.prompt_coach_turn, name='prompt-coach-turn'),
     path('', include(router.urls)),
 ]
