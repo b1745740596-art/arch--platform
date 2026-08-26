@@ -25,7 +25,7 @@ from design.models import (
 )
 from design.services import build_preview_schemes
 
-from . import business_tools, empathy, llm, psychology, rag, strategy
+from . import business_tools, empathy, llm, psychology, rag, slot_extraction, strategy
 from .models import Conversation, CustomerProfile, Message, TalkStep, TalkWorkflow
 
 
@@ -513,6 +513,44 @@ def _safe_reply(context: TurnContext) -> str:
     return candidate
 
 
+def _profile_fields_dict(profile: CustomerProfile) -> dict:
+    """Snapshot of the structured fields consumed by the slot extractor."""
+    return {
+        'city': profile.city,
+        'area': profile.area,
+        'household': profile.household,
+        'style': profile.style,
+        'budget_max': profile.budget_max,
+        'desired_timeline': profile.desired_timeline,
+        'pain_points': profile.pain_points,
+        'name': profile.name,
+        'phone': profile.phone,
+    }
+
+
+def _augment_updates_with_slots(profile: CustomerProfile, updates: dict, text: str) -> dict:
+    """Fill profile fields that rule extraction missed via one LLM slot pass.
+
+    Rules stay the fast, deterministic first pass; the LLM only interprets the
+    remaining free-form fields and never overwrites already-populated values.
+    """
+    merged = dict(updates or {})
+    filled_by_rules = {
+        field for field, value in merged.items()
+        if value not in (None, '', [], {})
+    }
+    remaining = [
+        field for field in strategy.missing_fields(profile)
+        if field not in filled_by_rules
+    ]
+    if not remaining or not (text or '').strip():
+        return merged
+    slots = slot_extraction.extract_slots(text, remaining, _profile_fields_dict(profile))
+    if slots:
+        merged.update(slots)
+    return merged
+
+
 def _run_step(step, context: TurnContext) -> str:
     kind = step.kind
     if kind == TalkStep.Kind.INTAKE:
@@ -528,6 +566,9 @@ def _run_step(step, context: TurnContext) -> str:
         context.updates = empathy.extract_profile_updates(
             context.text,
             expected_field=context.expected_field,
+        )
+        context.updates = _augment_updates_with_slots(
+            context.profile, context.updates, context.text,
         )
         _merge_profile(context.profile, context.updates, context.analysis)
         context.profile_update_completed = True

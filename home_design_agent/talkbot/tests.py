@@ -31,6 +31,7 @@ from .empathy import extract_profile_updates
 from .llm import generate_reply, load_deepseek_config, redact_sensitive_text
 from .psychology import analyze
 from .rag import retrieve
+from .slot_extraction import _validate_slots, extract_slots
 from .throttles import TalkBotIPThrottle
 
 
@@ -154,6 +155,25 @@ class TalkBotApiTests(APITestCase):
         self.assertEqual(assistant.metadata['reply_source'], 'rule')
         self.assertEqual(assistant.metadata['generation_status'], 'disabled')
         self.assertEqual(assistant.metadata['workflow_log'], conversation.workflow_log)
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    @patch('talkbot.engine.slot_extraction.extract_slots')
+    def test_llm_slot_extraction_fills_fields_rules_missed(self, mocked_extract_slots):
+        mocked_extract_slots.return_value = {
+            'household': '与父母同住，养猫',
+            'budget_max': 150000,
+        }
+        session_id = self.create_session().data['id']
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '我，猫，父母，预算十五万'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        profile = response.data['profile']
+        self.assertEqual(profile['household'], '与父母同住，养猫')
+        self.assertEqual(profile['budget_max'], 150000)
+        mocked_extract_slots.assert_called_once()
 
     @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
     def test_message_can_call_product_provider_and_designer_catalogs(self):
@@ -1134,6 +1154,58 @@ class ProfileExtractionTests(APITestCase):
         self.assertEqual(retrieve('你好'), [])
         results = retrieve('装修报价多少钱')
         self.assertTrue(any(item['source'] in ('报价', '平台套餐') for item in results))
+
+
+class SlotExtractionTests(APITestCase):
+    def test_validate_slots_keeps_valid_and_drops_unsafe_values(self):
+        validated = _validate_slots(
+            {
+                'budget_max': 150000,
+                'budget_min': 200000,
+                'area': 9999,
+                'phone': '12345',
+                'city': '上海',
+                'household': '与父母同住，养猫',
+                'pain_points': ['环保'],
+                'not_a_field': 'x',
+            },
+            missing_fields=[
+                'budget_max', 'budget_min', 'area', 'phone',
+                'city', 'household', 'pain_points',
+            ],
+        )
+        self.assertEqual(validated['budget_max'], 150000)
+        self.assertEqual(validated['city'], '上海')
+        self.assertEqual(validated['household'], '与父母同住，养猫')
+        self.assertEqual(validated['pain_points'], ['环保'])
+        self.assertNotIn('budget_min', validated)
+        self.assertNotIn('area', validated)
+        self.assertNotIn('phone', validated)
+        self.assertNotIn('not_a_field', validated)
+
+    @override_settings(
+        TALKBOT_LLM_ENABLED=True,
+        DEEPSEEK_API_KEY='test-deepseek-key',
+        DEEPSEEK_API_BASE='https://api.deepseek.com',
+        DEEPSEEK_MODEL='deepseek-v4-flash',
+    )
+    @patch('openai.OpenAI')
+    def test_extract_slots_parses_and_validates_llm_json(self, mocked_openai):
+        mocked_openai.return_value.chat.completions.create.return_value = SimpleNamespace(
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(
+                    content='{"household": "与父母同住，养猫", "budget_max": 150000, "area": 9999}',
+                ),
+            )],
+        )
+        slots = extract_slots(
+            '我，猫，父母，预算十五万',
+            ['household', 'budget_max', 'area'],
+            {},
+        )
+        self.assertEqual(slots['household'], '与父母同住，养猫')
+        self.assertEqual(slots['budget_max'], 150000)
+        self.assertNotIn('area', slots)
 
 
 class TalkBotThrottleTests(APITestCase):
