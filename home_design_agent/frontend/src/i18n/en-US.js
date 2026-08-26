@@ -127,6 +127,8 @@ export default {
     packLocked: 'This project has locked its inspiration pack for a consistent style.',
     rollPack: 'Random pack',
     addMore: 'Add',
+    awaitingDesigner: 'Waiting for room confirmation',
+    imageNumber: 'Image {number}',
     uploadLimit: 'Upload up to {max} images',
     batchAdded: '{count} plans generated',
     imageCount: 'Uploaded images',

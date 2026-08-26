@@ -127,6 +127,8 @@ export default {
     packLocked: '本项目已锁定灵感包，后续图片将沿用同一风格。',
     rollPack: '随机灵感包',
     addMore: '添加',
+    awaitingDesigner: '等待设计师确认功能',
+    imageNumber: '第 {number} 张图片',
     uploadLimit: '最多上传 {max} 张图片',
     batchAdded: '已生成 {count} 个方案',
     imageCount: '已上传图片',

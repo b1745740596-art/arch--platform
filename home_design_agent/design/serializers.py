@@ -390,6 +390,9 @@ class PromptCoachTurnSerializer(serializers.Serializer):
     stage = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=True, max_length=30,
     )
+    active_image_id = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=True, max_length=100,
+    )
     completed_stages = serializers.ListField(
         child=serializers.CharField(max_length=30), required=False, max_length=12,
     )

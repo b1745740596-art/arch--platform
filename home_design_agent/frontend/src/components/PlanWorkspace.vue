@@ -18,7 +18,6 @@ const term = useTerm()
 const steps = [
   { key: 'upload', labelKey: 'plan.stepUpload' },
   { key: 'config', labelKey: 'plan.stepConfig' },
-  { key: 'modules', labelKey: 'plan.stepPack' },
   { key: 'review', labelKey: 'plan.stepReview' },
 ]
 
@@ -29,6 +28,8 @@ const projectId = ref(studio.sessionProjectId || null)
 const projectName = ref('')
 const selectedRecordId = ref(null)
 const nameRequired = ref(false)
+const designerVersion = ref(0)
+let imageSequence = 0
 
 const draft = reactive({
   plan_name: '',
@@ -47,71 +48,24 @@ const selectedRecord = computed(
   () => records.value.find((record) => record.id === selectedRecordId.value) || records.value[0] || null,
 )
 
-function packStorageKey(pid) {
-  return `archai.project.pack.${pid}`
-}
-
-function readStoredPack(pid) {
-  if (!pid) return []
-  try {
-    const value = JSON.parse(localStorage.getItem(packStorageKey(pid)) || '[]')
-    return Array.isArray(value) ? value : []
-  } catch {
-    return []
-  }
-}
-
-function saveStoredPack(pid, codes) {
-  if (!pid) return
-  try {
-    localStorage.setItem(packStorageKey(pid), JSON.stringify(codes || []))
-  } catch {
-    // localStorage 不可用时只影响跨会话复用，不影响本次流程。
-  }
-}
-
-function rollInspirationPack() {
-  const selected = []
-  const groups = studio.modulesByGroup || []
-  for (const group of groups) {
-    if (selected.length >= studio.maxModules) break
-    const candidates = [...(group.modules || [])]
-    if (!candidates.length) continue
-    const isSingle = group.multiple === false || group.max_select === 1
-    const take = isSingle ? 1 : Math.min(group.max_select || 2, candidates.length)
-    const shuffled = candidates.sort(() => Math.random() - 0.5)
-    for (const module of shuffled) {
-      if (selected.length >= studio.maxModules) break
-      if (selected.includes(module.code)) continue
-      selected.push(module.code)
-      if (selected.length >= Math.min(take, studio.maxModules)) break
-    }
-    if (selected.length >= studio.maxModules) break
-  }
-  return selected
-}
-
-const packLocked = computed(
-  () => Boolean(projectId.value && readStoredPack(projectId.value).length),
-)
-
-function moduleName(code) {
-  return studio.modules.find((module) => module.code === code)?.name || code
-}
-
-function rollPack() {
-  draft.moduleCodes = rollInspirationPack()
-}
-
 function applyDesignerPatch(patch) {
   if (!patch || typeof patch !== 'object') return
+  if (Array.isArray(patch.image_rooms)) {
+    for (const assignment of patch.image_rooms) {
+      const image = draft.images.find((item) => String(item.id) === String(assignment?.image_id))
+      if (image && studio.options.room_types.includes(assignment?.room_type)) {
+        image.room_type = assignment.room_type
+      }
+    }
+    draft.room_type = draft.images.find((image) => image.room_type)?.room_type || ''
+  }
   if (studio.options.room_types.includes(patch.room_type)) draft.room_type = patch.room_type
   if (studio.options.styles.includes(patch.style)) draft.style = patch.style
   if (studio.options.budget_tiers.includes(patch.budget_tier)) draft.budget_tier = patch.budget_tier
   if (typeof patch.requirement === 'string') {
     draft.requirement = patch.requirement.slice(0, studio.requirementMaxLength)
   }
-  if (Array.isArray(patch.module_codes) && !packLocked.value) {
+  if (Array.isArray(patch.module_codes)) {
     const { codes } = clampModuleCodes(patch.module_codes, {
       modules: studio.modules,
       groups: studio.groups,
@@ -135,14 +89,8 @@ function money(value) {
 function ensureDraftDefaults() {
   const preset = studio.defaultPreset()
   draft.plan_name = draft.plan_name || projectName.value
-  draft.room_type = draft.room_type || preset.room_type
   draft.style = draft.style || preset.style
   draft.budget_tier = draft.budget_tier || preset.budget_tier
-  const storedPack = projectId.value ? readStoredPack(projectId.value) : []
-  draft.moduleCodes = draft.moduleCodes.length
-    ? [...draft.moduleCodes]
-    : [...(storedPack.length ? storedPack : rollInspirationPack())]
-  draft.workflowId = draft.workflowId ?? preset.workflowId
 }
 
 onMounted(async () => {
@@ -167,25 +115,26 @@ function resetDraft() {
   draft.requirement = ''
   draft.moduleCodes = []
   draft.workflowId = null
+  designerVersion.value += 1
   ensureDraftDefaults()
 }
 
 function uploadValid() {
-  return Boolean(draft.plan_name.trim() && draft.images.length && !draft.imageErrors.length)
+  return Boolean(
+    draft.plan_name.trim()
+    && draft.images.length
+    && draft.images.every((image) => studio.options.room_types.includes(image.room_type))
+    && !draft.imageErrors.length,
+  )
 }
 
 function configValid() {
-  return Boolean(draft.room_type && draft.style && draft.budget_tier)
-}
-
-function modulesValid() {
-  return draft.moduleCodes.length <= studio.maxModules
+  return Boolean(draft.style && draft.budget_tier)
 }
 
 function stepValid() {
   if (step.value === 0) return uploadValid()
   if (step.value === 1) return configValid()
-  if (step.value === 2) return modulesValid()
   return true
 }
 
@@ -230,9 +179,11 @@ function onFileChange(file) {
       return
     }
     draft.images.push({
+      id: `image-${Date.now()}-${imageSequence += 1}`,
       file: raw,
       url: URL.createObjectURL(raw),
       meta,
+      room_type: '',
     })
   })
 }
@@ -240,6 +191,7 @@ function onFileChange(file) {
 function removeImage(index) {
   const [removed] = draft.images.splice(index, 1)
   if (removed?.url) URL.revokeObjectURL(removed.url)
+  draft.room_type = draft.images.find((image) => image.room_type)?.room_type || ''
   draft.imageErrors = []
 }
 
@@ -254,7 +206,7 @@ async function ensureProject() {
 }
 
 async function generate() {
-  if (!uploadValid() || !configValid() || !modulesValid()) {
+  if (!uploadValid() || !configValid()) {
     ElMessage.warning(t('plan.stepIncomplete'))
     return
   }
@@ -266,7 +218,7 @@ async function generate() {
       const image = draft.images[index]
       const fd = new FormData()
       fd.append('project', pid)
-      fd.append('room_type', draft.room_type)
+      fd.append('room_type', image.room_type)
       fd.append('style', draft.style)
       fd.append('budget_tier', draft.budget_tier)
       fd.append('requirement', draft.requirement || '')
@@ -282,8 +234,8 @@ async function generate() {
 
       const record = {
         id: `${result.id || Date.now()}-${records.value.length}`,
-        title: recordName({ room_type: draft.room_type }),
-        room_type: draft.room_type,
+        title: recordName({ room_type: image.room_type }),
+        room_type: image.room_type,
         style: draft.style,
         budget_tier: draft.budget_tier,
         result,
@@ -293,9 +245,6 @@ async function generate() {
       created.push(record)
     }
 
-    if (created.length && projectId.value && !readStoredPack(projectId.value).length) {
-      saveStoredPack(projectId.value, draft.moduleCodes)
-    }
     if (created.length) selectedRecordId.value = records.value[0].id
     ElMessage.success(t('plan.batchAdded', { count: created.length }))
     resetDraft()
@@ -408,9 +357,12 @@ async function packageRecords() {
             <span v-if="nameRequired" class="name-error-text">{{ t('plan.nameRequired') }}</span>
           </div>
           <div v-if="draft.images.length" class="upload-grid">
-            <div v-for="(image, index) in draft.images" :key="image.url" class="upload-tile">
+            <div v-for="(image, index) in draft.images" :key="image.id" class="upload-tile">
               <img :src="image.url" alt="" />
-              <span>{{ image.meta.width }}×{{ image.meta.height }}px · {{ (image.meta.size / 1024 / 1024).toFixed(2) }}MB</span>
+              <span class="upload-function" :class="{ pending: !image.room_type }">
+                {{ image.room_type ? term(image.room_type) : t('plan.awaitingDesigner') }}
+              </span>
+              <span class="upload-meta">{{ image.meta.width }}×{{ image.meta.height }}px · {{ (image.meta.size / 1024 / 1024).toFixed(2) }}MB</span>
               <el-button
                 size="small"
                 circle
@@ -461,11 +413,6 @@ async function packageRecords() {
 
         <div v-show="step === 1" class="step-panel">
           <el-form label-position="top" size="small">
-            <el-form-item :label="t('win.roomType')">
-              <el-select v-model="draft.room_type" :placeholder="t('win.roomTypePlaceholder')" style="width:100%">
-                <el-option v-for="item in studio.options.room_types" :key="item" :label="term(item)" :value="item" />
-              </el-select>
-            </el-form-item>
             <el-form-item :label="t('win.style')">
               <el-select v-model="draft.style" :placeholder="t('win.stylePlaceholder')" style="width:100%">
                 <el-option v-for="item in studio.options.styles" :key="item" :label="term(item)" :value="item" />
@@ -486,60 +433,23 @@ async function packageRecords() {
                 :placeholder="t('win.requirementPlaceholder')"
               />
             </el-form-item>
-            <el-form-item v-if="studio.workflows.length" :label="t('win.workflow')">
-              <el-select v-model="draft.workflowId" :placeholder="t('win.workflowPlaceholder')" style="width:100%">
-                <el-option v-for="wf in studio.workflows" :key="wf.id" :label="wf.name" :value="wf.id" />
-              </el-select>
-            </el-form-item>
           </el-form>
         </div>
 
         <div v-show="step === 2" class="step-panel">
-          <div class="pack-card">
-            <div class="pack-head">
-              <div>
-                <b>{{ t('plan.packTitle') }}</b>
-                <small>{{ t('plan.packHint') }}</small>
-              </div>
-              <el-tag size="small" type="info" effect="plain">{{ draft.moduleCodes.length }} / {{ studio.maxModules }}</el-tag>
-            </div>
-
-            <el-alert
-              v-if="packLocked"
-              type="success"
-              :closable="false"
-              :title="t('plan.packLocked')"
-            />
-
-            <div class="pack-tags">
-              <el-tag
-                v-for="code in draft.moduleCodes"
-                :key="code"
-                size="small"
-                effect="plain"
-                type="success"
-              >
-                {{ moduleName(code) }}
-              </el-tag>
-            </div>
-
-            <el-button v-if="!packLocked" type="primary" @click="rollPack">
-              <el-icon><Refresh /></el-icon>
-              {{ t('plan.rollPack') }}
-            </el-button>
-          </div>
-        </div>
-
-        <div v-show="step === 3" class="step-panel">
           <div class="review-card">
             <div v-if="draft.images.length" class="review-thumbs">
-              <img v-for="image in draft.images" :key="image.url" :src="image.url" alt="" />
+              <img v-for="image in draft.images" :key="image.id" :src="image.url" alt="" />
             </div>
-            <div class="review-line"><span>{{ t('win.roomType') }}</span><b>{{ term(draft.room_type) }}</b></div>
+            <div class="review-image-rooms">
+              <div v-for="(image, index) in draft.images" :key="image.id" class="review-line">
+                <span>{{ t('plan.imageNumber', { number: index + 1 }) }}</span>
+                <b>{{ term(image.room_type) }}</b>
+              </div>
+            </div>
             <div class="review-line"><span>{{ t('win.style') }}</span><b>{{ term(draft.style) }}</b></div>
             <div class="review-line"><span>{{ t('win.budgetTier') }}</span><b>{{ term(draft.budget_tier) }}</b></div>
             <div class="review-line"><span>{{ t('win.requirement') }}</span><b>{{ draft.requirement || t('common.dash') }}</b></div>
-            <div class="review-line"><span>{{ t('win.diverge') }}</span><b>{{ draft.moduleCodes.length }} / {{ studio.maxModules }}</b></div>
             <div class="review-line"><span>{{ t('plan.imageCount') }}</span><b>{{ draft.images.length }}</b></div>
           </div>
           <el-button type="primary" class="generate-btn" :loading="submitting" @click="generate">
@@ -557,6 +467,7 @@ async function packageRecords() {
       </div>
 
       <DesignCoach
+        :key="designerVersion"
         :draft="draft"
         :has-images="Boolean(draft.images.length)"
         :disabled="submitting"
@@ -763,7 +674,7 @@ async function packageRecords() {
 .record-ph { display: grid; place-items: center; color: var(--brand-muted); background: var(--brand-green-soft); }
 .record-name { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.step-indicator { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
+.step-indicator { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
 
 .step-dot {
   display: flex;
@@ -830,7 +741,7 @@ async function packageRecords() {
   display: block;
 }
 
-.upload-tile span {
+.upload-tile .upload-meta {
   position: absolute;
   left: 0;
   right: 0;
@@ -841,6 +752,25 @@ async function packageRecords() {
   font-size: 10px;
   text-align: center;
 }
+
+.upload-function {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  max-width: calc(100% - 42px);
+  padding: 4px 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(23, 134, 95, 0.92);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-function.pending { background: rgba(17, 24, 39, 0.7); }
 
 .upload-remove {
   position: absolute;
@@ -880,22 +810,6 @@ async function packageRecords() {
 .module-group-head small { color: var(--brand-muted); font-size: 11px; }
 .module-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.pack-card {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 14px;
-  border-radius: 16px;
-  background: var(--brand-green-soft);
-  border: 1px solid #e5e7eb;
-}
-
-.pack-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.pack-head b { display: block; font-size: 15px; color: var(--brand-green-deep); }
-.pack-head small { display: block; margin-top: 3px; color: var(--brand-muted); font-size: 12px; line-height: 1.5; }
-
-.pack-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-
 .review-card {
   display: flex;
   flex-direction: column;
@@ -903,6 +817,14 @@ async function packageRecords() {
   padding: 12px;
   border-radius: 14px;
   background: var(--brand-green-soft);
+}
+
+.review-image-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .review-thumbs {

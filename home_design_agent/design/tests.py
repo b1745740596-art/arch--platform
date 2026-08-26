@@ -25,7 +25,9 @@ from .models import (
     Project,
     PromptModule,
     RenderJob,
+    RenderWorkflow,
     ServiceProvider,
+    WorkflowStep,
 )
 
 
@@ -448,6 +450,7 @@ class DesignPromptCoachTests(APITestCase):
         self.client.force_authenticate(self.user)
         self.base_draft = {
             'has_images': True,
+            'images': [{'id': 'image-1', 'room_type': '客厅'}],
             'plan_name': '我家客厅',
             'room_type': '客厅',
             'style': '现代简约',
@@ -460,6 +463,7 @@ class DesignPromptCoachTests(APITestCase):
         payload = {
             'message': '',
             'stage': '',
+            'active_image_id': '',
             'completed_stages': [],
             'history': [],
             'draft': dict(self.base_draft),
@@ -475,18 +479,73 @@ class DesignPromptCoachTests(APITestCase):
         self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
 
     def test_prompt_coach_starts_with_upload_when_image_is_missing(self):
-        draft = dict(self.base_draft, has_images=False)
+        draft = dict(self.base_draft, has_images=False, images=[])
         response = self.post_turn(draft=draft)
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['stage'], 'upload')
         self.assertIn('设计师', response.data['message'])
         self.assertFalse(response.data['ready_to_generate'])
 
+    def test_prompt_coach_asks_and_assigns_each_uploaded_image_room(self):
+        draft = dict(
+            self.base_draft,
+            room_type='',
+            images=[
+                {'id': 'image-1', 'room_type': ''},
+                {'id': 'image-2', 'room_type': ''},
+            ],
+        )
+        first = self.post_turn(draft=draft)
+        self.assertEqual(first.status_code, status.HTTP_200_OK, first.data)
+        self.assertEqual(first.data['stage'], 'image_room')
+        self.assertEqual(first.data['active_image_id'], 'image-1')
+        self.assertIn('第 1 张', first.data['message'])
+
+        assigned_draft = dict(draft)
+        second = self.post_turn(
+            draft=assigned_draft,
+            message='这是客厅',
+            stage='image_room',
+            active_image_id='image-1',
+            completed_stages=['upload'],
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK, second.data)
+        self.assertEqual(second.data['form_patch']['image_rooms'], [
+            {'image_id': 'image-1', 'room_type': '客厅'},
+        ])
+        self.assertEqual(second.data['stage'], 'image_room')
+        self.assertEqual(second.data['active_image_id'], 'image-2')
+        self.assertIn('第 2 张', second.data['message'])
+
+        final_draft = dict(
+            draft,
+            images=[
+                {'id': 'image-1', 'room_type': '客厅'},
+                {'id': 'image-2', 'room_type': ''},
+            ],
+        )
+        final = self.post_turn(
+            draft=final_draft,
+            message='这是厨房',
+            stage='image_room',
+            active_image_id='image-2',
+            completed_stages=['upload'],
+        )
+        self.assertEqual(final.status_code, status.HTTP_200_OK, final.data)
+        self.assertEqual(final.data['form_patch']['image_rooms'], [
+            {'image_id': 'image-2', 'room_type': '厨房'},
+        ])
+        self.assertEqual(final.data['stage'], 'function')
+        self.assertIn('image_room', final.data['completed_stages'])
+
     def test_prompt_coach_skips_completed_form_fields_and_asks_one_sop_question(self):
         response = self.post_turn()
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['stage'], 'function')
-        self.assertEqual(response.data['completed_stages'][:4], ['upload', 'room', 'style', 'budget'])
+        self.assertEqual(
+            response.data['completed_stages'][:4],
+            ['upload', 'image_room', 'style', 'budget'],
+        )
         self.assertEqual(len(response.data['quick_replies']), 3)
         self.assertLessEqual(sum(response.data['message'].count(mark) for mark in '。！？'), 2)
 
@@ -494,7 +553,7 @@ class DesignPromptCoachTests(APITestCase):
         response = self.post_turn(
             message='三口之家，需要充足收纳',
             stage='function',
-            completed_stages=['upload', 'room', 'style', 'budget'],
+            completed_stages=['upload', 'image_room', 'style', 'budget'],
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['stage'], 'atmosphere')
@@ -517,7 +576,7 @@ class DesignPromptCoachTests(APITestCase):
         response = self.post_turn(
             message='明亮温暖',
             stage='atmosphere',
-            completed_stages=['upload', 'room', 'style', 'budget', 'function'],
+            completed_stages=['upload', 'image_room', 'style', 'budget', 'function'],
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['stage'], 'constraints')
@@ -530,9 +589,28 @@ class DesignPromptCoachTests(APITestCase):
         response = self.post_turn(
             message='我的手机号是13800138000，三口之家',
             stage='function',
-            completed_stages=['upload', 'room', 'style', 'budget'],
+            completed_stages=['upload', 'image_room', 'style', 'budget'],
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['stage'], 'function')
         self.assertEqual(response.data['form_patch'], {})
         self.assertIn('隐私', response.data['message'])
+
+    def test_prompt_coach_selects_image_edit_workflow_without_exposing_steps(self):
+        generic = RenderWorkflow.objects.create(name='普通生成', is_default=True)
+        WorkflowStep.objects.create(
+            workflow=generic,
+            kind=WorkflowStep.Kind.GENERATE_IMAGE,
+            order=10,
+        )
+        image_edit = RenderWorkflow.objects.create(name='室内图生图', tags=['客厅', '图生图'])
+        WorkflowStep.objects.create(
+            workflow=image_edit,
+            kind=WorkflowStep.Kind.EDIT_IMAGE,
+            order=10,
+        )
+
+        response = self.post_turn()
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['form_patch']['workflow_id'], image_edit.id)
+        self.assertNotIn('workflow', response.data['message'].lower())

@@ -24,6 +24,8 @@ const progress = ref(0)
 const historyVisible = ref(false)
 const history = ref([])
 const initialized = ref(false)
+const activeImageId = ref('')
+const pendingImageRefresh = ref(false)
 
 const canSend = computed(
   () => Boolean(input.value.trim()) && !loading.value && !props.disabled,
@@ -32,6 +34,12 @@ const canSend = computed(
 function draftPayload() {
   return {
     has_images: props.hasImages,
+    images: Array.isArray(props.draft.images)
+      ? props.draft.images.map((image) => ({
+          id: String(image.id || ''),
+          room_type: image.room_type || '',
+        }))
+      : [],
     plan_name: props.draft.plan_name || '',
     room_type: props.draft.room_type || '',
     style: props.draft.style || '',
@@ -58,6 +66,7 @@ async function advance(message = '', showUser = true) {
     const response = await api.promptCoachTurn({
       message: value,
       stage: stage.value,
+      active_image_id: activeImageId.value,
       completed_stages: completedStages.value,
       history: history.value.slice(-10).map(({ role, content }) => ({ role, content })),
       draft: draftPayload(),
@@ -67,6 +76,7 @@ async function advance(message = '', showUser = true) {
       emit('apply-patch', response.form_patch)
     }
     stage.value = response?.stage || stage.value
+    activeImageId.value = response?.active_image_id || ''
     completedStages.value = Array.isArray(response?.completed_stages)
       ? response.completed_stages
       : completedStages.value
@@ -83,6 +93,10 @@ async function advance(message = '', showUser = true) {
   } finally {
     loading.value = false
     initialized.value = true
+    if (pendingImageRefresh.value && !props.disabled) {
+      pendingImageRefresh.value = false
+      void advance('', false)
+    }
   }
 }
 
@@ -103,12 +117,28 @@ onMounted(() => {
 })
 
 watch(
-  () => [props.hasImages, props.draft.room_type, props.draft.style, props.draft.budget_tier],
-  () => {
-    if (!initialized.value || loading.value) return
+  () => [
+    (props.draft.images || []).map((image) => image.id).join('|'),
+    (props.draft.images || []).map((image) => `${image.id}:${image.room_type || ''}`).join('|'),
+    props.draft.style,
+    props.draft.budget_tier,
+  ],
+  (next, previous) => {
+    if (!initialized.value) return
+    if (loading.value) {
+      if (next[0] !== previous?.[0]) pendingImageRefresh.value = true
+      return
+    }
+    if (next[0] !== previous?.[0]) {
+      void advance('', false)
+      return
+    }
     const fieldReady = {
       upload: props.hasImages,
-      room: Boolean(props.draft.room_type),
+      image_room: Boolean(
+        props.draft.images?.length
+        && props.draft.images.every((image) => image.room_type),
+      ),
       style: Boolean(props.draft.style),
       budget: Boolean(props.draft.budget_tier),
     }[stage.value]
