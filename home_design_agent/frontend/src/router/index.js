@@ -8,6 +8,11 @@ const routes = [
   { path: '/my-home', name: 'my-home', component: () => import('@/views/MyHomeView.vue') },
   { path: '/render', name: 'render', component: () => import('@/views/RenderView.vue') },
   { path: '/studio', name: 'studio', component: () => import('@/views/StudioView.vue') },
+  {
+    path: '/community/:id',
+    name: 'community-post',
+    component: () => import('@/views/CommunityPostView.vue'),
+  },
   { path: '/intake', name: 'intake', component: () => import('@/views/IntakeView.vue') },
   { path: '/projects', name: 'projects', component: () => import('@/views/ProjectsView.vue') },
   { path: '/requirement', name: 'requirement', component: () => import('@/views/RequirementView.vue') },

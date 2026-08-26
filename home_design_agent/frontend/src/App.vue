@@ -202,7 +202,7 @@ watch(
         </div>
       </header>
 
-      <main class="app-main">
+      <main class="app-main" :class="{ 'is-detail': route.path.startsWith('/community/') }">
         <RouterView v-slot="{ Component }">
           <transition name="page" mode="out-in">
             <component :is="Component" />
@@ -210,7 +210,7 @@ watch(
         </RouterView>
       </main>
 
-      <nav v-if="isApp" class="app-tabbar" aria-label="App navigation">
+      <nav v-if="isApp && !route.path.startsWith('/community/')" class="app-tabbar" aria-label="App navigation">
         <router-link
           class="tabbar-item"
           :class="{ active: route.path === '/my-home' && route.query.tab !== 'orders' }"
@@ -567,6 +567,8 @@ watch(
   max-width: none;
   padding: 12px 12px 84px;
 }
+
+.app.is-app .app-main.is-detail { padding-bottom: 12px; }
 
 .app-tabbar {
   position: fixed;
