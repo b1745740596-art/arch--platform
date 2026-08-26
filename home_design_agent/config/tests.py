@@ -32,6 +32,11 @@ class AdminMenuTests(SimpleTestCase):
         group_names = [group['name'] for group in settings.SIMPLEUI_CONFIG['menus']]
         self.assertEqual(settings.SIMPLEUI_CONFIG['menu_display'], group_names)
 
+    def test_sidebar_does_not_append_duplicate_system_groups(self):
+        group_names = [group['name'] for group in settings.SIMPLEUI_CONFIG['menus']]
+        self.assertFalse(settings.SIMPLEUI_CONFIG['system_keep'])
+        self.assertEqual(len(group_names), len(set(group_names)))
+
 
 class PrivateMediaTests(TestCase):
     def setUp(self):

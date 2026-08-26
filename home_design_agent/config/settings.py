@@ -392,7 +392,10 @@ SIMPLEUI_DEFAULT_THEME = 'admin.lte.css'
 
 # 自定义左侧菜单，按 PRD 功能域组织
 SIMPLEUI_CONFIG = {
-    'system_keep': True,
+    # All registered admin pages are listed explicitly below. Keeping SimpleUI's
+    # auto-generated app groups would append a second "谈单机器人" group because
+    # the TalkBot app verbose name matches the custom group name exactly.
+    'system_keep': False,
     'menu_display': ['梦想家', '工作流', '谈单机器人', '用户管理', '支付管理'],
     'dynamic': False,
     'menus': [
