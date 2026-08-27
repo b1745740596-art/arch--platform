@@ -92,7 +92,7 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 改两个文件，保持一致：
 
 - `home_design_agent/frontend/capacitor.config.json` 的 `version`
-- `home_design_agent/app_release.json` 的 `version`、`build`、`apk_url`、`changelog`
+- `home_design_agent/app_release.json` 的 `version`、`build`、`apk_url`、`external_apk_url`、`changelog`
 
 示例：
 
@@ -101,12 +101,14 @@ DEEPSEEK_MODEL=deepseek-v4-flash
   "version": "1.2.1",
   "build": 6,
   "apk_url": "/media/app/arch-ai.apk?v=1.2.1",
+  "external_apk_url": "https://github.com/b1745740596-art/arch--platform/releases/download/apk/app-release.apk",
   "changelog": ["本次更新内容"],
   "force_update": false
 }
 ```
 
 `apk_url` 必须带版本查询参数，避免 CDN/浏览器缓存导致用户下载到旧包。
+`external_apk_url` 是原生更新插件不可用时的系统浏览器兜底，必须指向可公开下载的固定 APK 地址。
 
 ### 2. 提交版本号
 
@@ -188,6 +190,7 @@ curl -sS https://plankeai-home.com/api/design/app-version/ | python3 -m json.too
 ```
 
 确认返回的 `apk_url` 与版本号正确，`HTTP/1.1 200` 正常。
+同时确认 `external_apk_url` 经重定向后返回 `HTTP 200`。
 
 ## 五、上线验证清单
 
@@ -197,6 +200,8 @@ curl -sS https://plankeai-home.com/api/design/app-version/ | python3 -m json.too
 - [ ] App 底部导航与页面跳转正常
 - [ ] 新 APK 下载、安装正常
 - [ ] 「我的 → 设置 → 检查更新」能识别新版本
+- [ ] 生图页点击「拍照」打开系统相机，不打开图库
+- [ ] 拍照确认后图片在生图上传区正常回显
 
 ## 六、回滚
 
@@ -231,3 +236,4 @@ ssh -i ~/.ssh/arch_deploy_ed25519 root@47.242.59.208 \
 5. 前端构建使用仓库内置 Node，路径必须包含：
    `"/Users/didi/Architecture Agent Platform/.toolchain/node/bin"`。
 6. `Build APK` 的四个 Android 签名 Secrets 缺一不可；不得把密钥库或口令写回 workflow。
+7. Capacitor 自定义插件必须在 `super.onCreate()` 之前调用 `registerPlugin()`；否则 Bridge 已创建，前端会判定插件不可用。

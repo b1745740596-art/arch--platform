@@ -139,6 +139,7 @@ def app_release(request):
         'version': '0.0.0',
         'build': 0,
         'apk_url': '/media/app/arch-ai.apk',
+        'external_apk_url': '',
         'changelog': [],
         'force_update': False,
     }

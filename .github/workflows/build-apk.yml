@@ -52,6 +52,31 @@ jobs:
           cp native/android/CameraCapturePlugin.java android/app/src/main/java/com/archai/home/CameraCapturePlugin.java
           cp native/android/MainActivity.java android/app/src/main/java/com/archai/home/MainActivity.java
 
+      - name: Validate native plugin registration
+        working-directory: home_design_agent/frontend
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path(
+              'android/app/src/main/java/com/archai/home/MainActivity.java'
+          ).read_text()
+          bridge_creation = source.index('super.onCreate(savedInstanceState);')
+          for plugin in ('ApkUpdaterPlugin', 'CameraCapturePlugin'):
+              registration = f'registerPlugin({plugin}.class);'
+              if source.index(registration) > bridge_creation:
+                  raise SystemExit(
+                      f'{plugin} must be registered before Capacitor creates the Bridge'
+                  )
+
+          camera = Path(
+              'android/app/src/main/java/com/archai/home/CameraCapturePlugin.java'
+          ).read_text()
+          if 'MediaStore.ACTION_IMAGE_CAPTURE' not in camera:
+              raise SystemExit('CameraCapturePlugin must launch ACTION_IMAGE_CAPTURE')
+          print('native plugin registration validated')
+          PY
+
       - name: Apply version metadata
         working-directory: home_design_agent/frontend
         run: |

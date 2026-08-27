@@ -141,6 +141,7 @@ export default {
     addMore: 'Add',
     takePhoto: 'Take photo',
     openingCamera: 'Opening camera',
+    cameraUnavailable: 'This app version cannot access the camera. Update the app and try again.',
     cameraFailed: 'Could not take a photo. Check the camera and try again.',
     chooseAlbum: 'Choose from album',
     uploadPhotoTitle: 'Add room photos',

@@ -141,6 +141,7 @@ export default {
     addMore: '添加',
     takePhoto: '拍照',
     openingCamera: '正在打开相机',
+    cameraUnavailable: '当前 App 版本未接通相机，请更新后重试',
     cameraFailed: '拍照失败，请检查相机后重试',
     chooseAlbum: '从相册选择',
     uploadPhotoTitle: '添加空间照片',

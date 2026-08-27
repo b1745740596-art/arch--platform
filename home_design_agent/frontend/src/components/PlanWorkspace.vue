@@ -232,17 +232,39 @@ function capturedPhotoToFile(photo) {
 
 async function openCamera() {
   if (capturing.value) return
-  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('CameraCapture')) {
+  const nativePlatform = Capacitor.isNativePlatform()
+  const pluginAvailable = Capacitor.isPluginAvailable('CameraCapture')
+  if (!nativePlatform) {
     cameraInput.value?.click()
+    return
+  }
+  if (!pluginAvailable) {
+    console.error('[CameraCapture] result=unavailable', {
+      platform: Capacitor.getPlatform(),
+      pluginAvailable,
+    })
+    ElMessage.error(t('plan.cameraUnavailable'))
     return
   }
 
   capturing.value = true
   try {
     const photo = await CameraCapture.capturePhoto()
-    await addImage(capturedPhotoToFile(photo))
+    const file = capturedPhotoToFile(photo)
+    console.info('[CameraCapture] result=success', {
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    })
+    await addImage(file)
   } catch (error) {
-    if (error?.code !== 'CAPTURE_CANCELLED') {
+    if (error?.code === 'CAPTURE_CANCELLED') {
+      console.info('[CameraCapture] result=cancelled', { code: error.code })
+    } else {
+      console.error('[CameraCapture] result=error', {
+        code: error?.code || 'UNKNOWN',
+        message: error?.message || String(error),
+      })
       ElMessage.error(t('plan.cameraFailed'))
     }
   } finally {
