@@ -41,11 +41,12 @@ jobs:
         working-directory: home_design_agent/frontend
         run: npx cap sync android
 
-      - name: Add in-app updater plugin
+      - name: Add native app plugins
         working-directory: home_design_agent/frontend
         run: |
           mkdir -p android/app/src/main/java/com/archai/home
           cp native/android/ApkUpdaterPlugin.java android/app/src/main/java/com/archai/home/ApkUpdaterPlugin.java
+          cp native/android/CameraCapturePlugin.java android/app/src/main/java/com/archai/home/CameraCapturePlugin.java
           cp native/android/MainActivity.java android/app/src/main/java/com/archai/home/MainActivity.java
 
       - name: Apply version metadata

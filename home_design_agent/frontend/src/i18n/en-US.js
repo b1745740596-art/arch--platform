@@ -140,6 +140,8 @@ export default {
     rollPack: 'Random pack',
     addMore: 'Add',
     takePhoto: 'Take photo',
+    openingCamera: 'Opening camera',
+    cameraFailed: 'Could not take a photo. Check the camera and try again.',
     chooseAlbum: 'Choose from album',
     uploadPhotoTitle: 'Add room photos',
     uploadPhotoHint: 'Take a new photo or choose existing images from your phone',

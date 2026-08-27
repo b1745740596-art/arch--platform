@@ -140,6 +140,8 @@ export default {
     rollPack: '随机灵感包',
     addMore: '添加',
     takePhoto: '拍照',
+    openingCamera: '正在打开相机',
+    cameraFailed: '拍照失败，请检查相机后重试',
     chooseAlbum: '从相册选择',
     uploadPhotoTitle: '添加空间照片',
     uploadPhotoHint: '拍摄现场照片，或从手机相册选择已有图片',

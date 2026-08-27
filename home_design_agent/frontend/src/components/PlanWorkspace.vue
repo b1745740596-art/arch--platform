@@ -9,6 +9,8 @@ import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
 import { clampModuleCodes, validateImageFile } from '@/utils/validation'
 import { isNativeApp } from '@/utils/app'
+import { Capacitor } from '@capacitor/core'
+import CameraCapture from '@/plugins/camera-capture'
 import DesignCoach from '@/components/DesignCoach.vue'
 
 const router = useRouter()
@@ -18,6 +20,7 @@ const term = useTerm()
 const isApp = computed(() => isNativeApp())
 const cameraInput = ref(null)
 const galleryInput = ref(null)
+const capturing = ref(false)
 
 const steps = [
   { key: 'upload', labelKey: 'plan.stepUpload' },
@@ -212,8 +215,39 @@ async function onNativeFiles(event) {
   }
 }
 
-function openCamera() {
-  cameraInput.value?.click()
+function capturedPhotoToFile(photo) {
+  const encoded = String(photo?.base64 || '')
+  if (!encoded) throw new Error('Camera returned no image data')
+  const binary = window.atob(encoded)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return new File(
+    [bytes],
+    photo?.fileName || `camera-${Date.now()}.jpg`,
+    { type: photo?.mimeType || 'image/jpeg', lastModified: Date.now() },
+  )
+}
+
+async function openCamera() {
+  if (capturing.value) return
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('CameraCapture')) {
+    cameraInput.value?.click()
+    return
+  }
+
+  capturing.value = true
+  try {
+    const photo = await CameraCapture.capturePhoto()
+    await addImage(capturedPhotoToFile(photo))
+  } catch (error) {
+    if (error?.code !== 'CAPTURE_CANCELLED') {
+      ElMessage.error(t('plan.cameraFailed'))
+    }
+  } finally {
+    capturing.value = false
+  }
 }
 
 function openGallery() {
@@ -406,9 +440,9 @@ async function packageRecords() {
               </el-button>
             </div>
             <template v-if="isApp && draft.images.length < MAX_UPLOAD_IMAGES">
-              <button type="button" class="add-tile source-tile" @click="openCamera">
-                <el-icon><Camera /></el-icon>
-                <span>{{ t('plan.takePhoto') }}</span>
+              <button type="button" class="add-tile source-tile" :disabled="capturing" @click="openCamera">
+                <el-icon :class="{ 'is-loading': capturing }"><Loading v-if="capturing" /><Camera v-else /></el-icon>
+                <span>{{ capturing ? t('plan.openingCamera') : t('plan.takePhoto') }}</span>
               </button>
               <button type="button" class="add-tile source-tile" @click="openGallery">
                 <el-icon><Picture /></el-icon>
@@ -435,9 +469,9 @@ async function packageRecords() {
             <div class="native-upload-title">{{ t('plan.uploadPhotoTitle') }}</div>
             <small>{{ t('plan.uploadPhotoHint') }}</small>
             <div class="native-upload-actions">
-              <button type="button" class="native-source-button camera" @click="openCamera">
-                <el-icon><Camera /></el-icon>
-                <span>{{ t('plan.takePhoto') }}</span>
+              <button type="button" class="native-source-button" :disabled="capturing" @click="openCamera">
+                <el-icon :class="{ 'is-loading': capturing }"><Loading v-if="capturing" /><Camera v-else /></el-icon>
+                <span>{{ capturing ? t('plan.openingCamera') : t('plan.takePhoto') }}</span>
               </button>
               <button type="button" class="native-source-button" @click="openGallery">
                 <el-icon><Picture /></el-icon>
@@ -872,6 +906,7 @@ async function packageRecords() {
 
 .add-tile .el-icon { font-size: 24px; }
 .source-tile { appearance: none; }
+.source-tile:disabled { cursor: wait; opacity: 0.62; }
 
 .upload-ic { font-size: 34px; color: var(--brand-green); }
 .upload-empty { display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -910,13 +945,8 @@ async function packageRecords() {
   font-weight: 800;
   cursor: pointer;
 }
-.native-source-button.camera {
-  border-color: transparent;
-  background: linear-gradient(135deg, var(--brand-green), var(--brand-green-deep));
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(35, 169, 124, 0.2);
-}
 .native-source-button .el-icon { font-size: 18px; }
+.native-source-button:disabled { cursor: wait; opacity: 0.62; }
 .native-file-input {
   position: fixed;
   width: 1px;
