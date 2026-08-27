@@ -216,6 +216,55 @@ class TalkBotApiTests(APITestCase):
         self.assertIn('调用并展示', response.data['message']['content'])
 
     @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
+    def test_new_style_mention_proactively_shows_matching_public_renders(self):
+        owner_project = Project.objects.create(user=self.user, title='我的原木项目')
+        own_render = RenderJob.objects.create(
+            project=owner_project,
+            status=RenderJob.Status.SUCCESS,
+            room_type='客厅',
+            style='原木',
+            result_image_url='https://images.example.com/own-wood.jpg',
+        )
+        stranger = User.objects.create_user(username='gallery-owner', password='secret123')
+        foreign_project = Project.objects.create(user=stranger, title='不应公开的客户项目名')
+        foreign_render = RenderJob.objects.create(
+            project=foreign_project,
+            status=RenderJob.Status.SUCCESS,
+            room_type='卧室',
+            style='原木风',
+            design_note='不应公开的客户需求说明',
+            result_image_url='https://images.example.com/public-wood.jpg',
+        )
+        RenderJob.objects.create(
+            project=foreign_project,
+            status=RenderJob.Status.SUCCESS,
+            room_type='客厅',
+            style='法式',
+            result_image_url='https://images.example.com/french.jpg',
+        )
+
+        session_id = self.create_session().data['id']
+        response = self.client.post(
+            f'{SESSIONS_URL}{session_id}/messages/',
+            {'content': '我喜欢原木风，温馨一点'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        render_card = next(
+            item for item in response.data['message']['metadata']['tool_results']
+            if item['kind'] == 'renders'
+        )
+        self.assertEqual(render_card['title'], '原木风格效果图')
+        self.assertSetEqual(
+            {item['id'] for item in render_card['items']},
+            {own_render.id, foreign_render.id},
+        )
+        public_item = next(item for item in render_card['items'] if item['id'] == foreign_render.id)
+        self.assertEqual(public_item['subtitle'], '平台公开效果图库')
+        self.assertNotIn('不应公开', str(public_item))
+
+    @override_settings(TALKBOT_LLM_ENABLED=False, DEEPSEEK_API_KEY='')
     def test_render_and_order_tools_only_expose_the_current_users_data(self):
         own_project = Project.objects.create(user=self.user, title='我的项目')
         own_render = RenderJob.objects.create(

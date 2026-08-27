@@ -48,7 +48,7 @@ def _safe_media_path(raw_path: str) -> tuple[str, Path]:
 
 
 def _can_read_media(user_id: int, storage_name: str) -> bool:
-    """Allow owned uploads plus active, authenticated-only catalog media."""
+    """Allow owned uploads plus authenticated catalogue media."""
     if storage_name.startswith('designers/') and Designer.objects.filter(
         is_active=True,
         avatar=storage_name,
@@ -71,6 +71,13 @@ def _can_read_media(user_id: int, storage_name: str) -> bool:
         project__user_id=user_id,
         cover_image=storage_name,
     ).exists():
+        return True
+    if storage_name.startswith('renders/') and RenderJob.objects.filter(
+        status=RenderJob.Status.SUCCESS,
+        result_image=storage_name,
+    ).exists():
+        # Finished renders form the authenticated public inspiration library.
+        # Raw photos remain restricted to their project owner below.
         return True
     return (
         RenderJob.objects.filter(project__user_id=user_id)

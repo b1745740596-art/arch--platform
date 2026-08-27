@@ -746,6 +746,10 @@ def process_message(conversation: Conversation, text: str, *, client_id: str = '
                     context.conversation,
                     context.profile,
                     context.text,
+                    style_mentioned=bool(
+                        (context.updates or {}).get('style')
+                        and context.profile.style == (context.updates or {}).get('style')
+                    ),
                 )
             else:
                 context.tool_results = []

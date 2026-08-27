@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from django.db.models import Q
+
 from design.models import (
     Designer,
     DesignScheme,
@@ -28,6 +30,7 @@ PROVIDER_TERMS = (
 )
 DESIGNER_TERMS = ('设计师', '设计顾问')
 RENDER_TERMS = ('效果图', '生图', '渲染图', '设计图', '空间图', '意向图')
+OWN_RENDER_TERMS = ('我的效果图', '我生成的效果图', '我的生图', '我的渲染图', '我的设计图')
 SCHEME_TERMS = ('设计方案', '装修方案', '预方案', '我的方案', '方案推荐', '看看方案')
 ORDER_LIST_TERMS = ('我的订单', '查看订单', '订单状态', '订单进度', '订单号', '已下单')
 ORDER_CREATE_TERMS = ('帮我下单', '我要下单', '立即下单', '确认下单', '创建订单', '生成订单', '生成方案订单')
@@ -172,34 +175,53 @@ def _designer_card(profile) -> dict:
     return _card('designers', '设计师推荐', items, empty_message='当前没有匹配的设计师。')
 
 
-def _render_card(conversation) -> dict:
-    jobs = (
-        RenderJob.objects.filter(
-            project__user=conversation.user,
-            status=RenderJob.Status.SUCCESS,
-        )
-        .select_related('project')
-        .order_by('-created_at')[:RESULT_LIMIT]
+def _render_card(conversation, *, style: str = '', own_only: bool = False) -> dict:
+    """Return successful renders from the public library, optionally by style.
+
+    Render results are shared catalogue assets. Raw photos and project details
+    remain private; public cards expose only the finished image and its style.
+    """
+    jobs = RenderJob.objects.filter(status=RenderJob.Status.SUCCESS).filter(
+        Q(result_image__isnull=False) & ~Q(result_image='')
+        | ~Q(result_image_url=''),
     )
+    if own_only:
+        jobs = jobs.filter(project__user=conversation.user)
+    normalized_style = (style or '').strip().removesuffix('风格').removesuffix('风')
+    if normalized_style:
+        jobs = jobs.filter(style__icontains=normalized_style)
+    jobs = jobs.select_related('project', 'project__user').order_by('-created_at')[:RESULT_LIMIT]
+
     items = []
     for job in jobs:
         image_url = _file_url(job.result_image) or _safe_url(job.result_image_url)
         if not image_url:
             continue
+        is_owner = job.project.user_id == conversation.user_id
         items.append({
             'id': job.id,
             'entity': 'render',
             'title': ' · '.join(filter(None, (job.room_type, job.style))) or f'效果图 #{job.id}',
-            'subtitle': job.project.title,
-            'description': job.design_note[:120],
+            'subtitle': job.project.title if is_owner else '平台公开效果图库',
+            'description': (
+                job.design_note[:120]
+                if is_owner
+                else '平台公开效果图，可作为装修风格参考。'
+            ),
             'image_url': image_url,
             'status': job.get_status_display(),
+            'badges': [value for value in (job.style, job.room_type) if value],
         })
+    title = f'{style}风格效果图' if style else ('我的效果图' if own_only else 'AI 效果图库')
     return _card(
         'renders',
-        'AI 生图设计',
+        title,
         items,
-        empty_message='还没有可展示的效果图，上传一张房屋照片即可开始生成。',
+        empty_message=(
+            f'效果图库暂时没有匹配“{style}”的图片，可以上传房屋照片生成专属效果图。'
+            if style
+            else '还没有可展示的效果图，上传一张房屋照片即可开始生成。'
+        ),
         action={'type': 'navigate', 'path': '/render'},
     )
 
@@ -321,14 +343,26 @@ def _capability_card() -> dict:
     }])
 
 
-def collect_tool_results(conversation, profile, text: str) -> list[dict]:
-    """Select bounded business tools using explicit user wording."""
+def collect_tool_results(
+    conversation,
+    profile,
+    text: str,
+    *,
+    style_mentioned: bool = False,
+) -> list[dict]:
+    """Select business tools from explicit requests and newly mentioned styles."""
     text = (text or '').strip()
     results = []
     if _contains(text, CAPABILITY_TERMS):
         results.append(_capability_card())
-    if _contains(text, RENDER_TERMS):
-        results.append(_render_card(conversation))
+    if style_mentioned and profile.style:
+        results.append(_render_card(conversation, style=profile.style))
+    elif _contains(text, RENDER_TERMS):
+        results.append(_render_card(
+            conversation,
+            style=profile.style if profile.style and not _contains(text, OWN_RENDER_TERMS) else '',
+            own_only=_contains(text, OWN_RENDER_TERMS),
+        ))
     if _contains(text, PRODUCT_TERMS):
         results.append(_product_card(profile, text))
     if _contains(text, PROVIDER_TERMS):

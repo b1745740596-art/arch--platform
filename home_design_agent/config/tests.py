@@ -128,12 +128,20 @@ class PrivateMediaTests(TestCase):
         self.assertEqual(response['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(self.client.get('/media/app/internal.apk').status_code, 403)
 
-    def test_other_user_cannot_read_owned_media(self):
+    def test_other_user_can_read_finished_render_but_not_private_source_media(self):
         self.client.force_login(self.bob)
 
-        for url in self.owned_files:
+        private_files = {
+            url: content for url, content in self.owned_files.items()
+            if url != self.render.result_image.url
+        }
+        for url in private_files:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 404)
+
+        response = self.client.get(self.render.result_image.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.response_body(response), b'alice-render-result')
 
     def test_owner_can_read_every_owned_image_field(self):
         self.client.force_login(self.alice)
