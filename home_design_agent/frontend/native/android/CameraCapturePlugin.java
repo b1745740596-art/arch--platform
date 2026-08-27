@@ -1,16 +1,11 @@
 package com.archai.home;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
-import android.content.ClipData;
 import android.content.Intent;
-import android.net.Uri;
-import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
 
 import androidx.activity.result.ActivityResult;
-import androidx.core.content.FileProvider;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -27,12 +22,11 @@ import java.io.IOException;
 @CapacitorPlugin(name = "CameraCapture")
 public class CameraCapturePlugin extends Plugin {
     private static final String TAG = "CameraCapture";
-    private File pendingPhoto;
-    private Uri pendingPhotoUri;
+    private boolean captureInProgress;
 
     @PluginMethod
     public void capturePhoto(PluginCall call) {
-        if (pendingPhoto != null) {
+        if (captureInProgress) {
             Log.w(TAG, "capturePhoto result=in_progress");
             call.reject("A photo capture is already in progress", "CAPTURE_IN_PROGRESS");
             return;
@@ -45,59 +39,65 @@ public class CameraCapturePlugin extends Plugin {
             return;
         }
 
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-
         try {
-            File cameraDir = new File(getContext().getCacheDir(), "captured-images");
-            if (!cameraDir.exists() && !cameraDir.mkdirs()) {
-                throw new IOException("Unable to create camera cache directory");
-            }
-            pendingPhoto = File.createTempFile("room-photo-", ".jpg", cameraDir);
-            pendingPhotoUri = FileProvider.getUriForFile(
-                getContext(),
-                getContext().getPackageName() + ".fileprovider",
-                pendingPhoto
-            );
-
-            intent.putExtra(MediaStore.EXTRA_OUTPUT, pendingPhotoUri);
-            intent.setClipData(ClipData.newRawUri("room-photo", pendingPhotoUri));
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-
+            captureInProgress = true;
+            Intent intent = new Intent(activity, CameraActivity.class);
+            Log.i(TAG, "capturePhoto result=opening activity=" + CameraActivity.class.getName());
             startActivityForResult(call, intent, "captureResult");
-        } catch (ActivityNotFoundException error) {
-            Log.e(TAG, "capturePhoto result=unavailable", error);
-            clearPendingPhoto();
-            call.reject("No camera app is available", "CAMERA_UNAVAILABLE", error);
         } catch (Exception error) {
+            captureInProgress = false;
             Log.e(TAG, "capturePhoto result=open_failed", error);
-            clearPendingPhoto();
             call.reject("Unable to open camera", "CAMERA_OPEN_FAILED", error);
         }
     }
 
     @ActivityCallback
     private void captureResult(PluginCall call, ActivityResult result) {
+        captureInProgress = false;
         if (call == null) {
             Log.e(TAG, "capturePhoto result=orphaned_call");
-            clearPendingPhoto();
             return;
         }
+
+        Intent data = result.getData();
         if (result.getResultCode() != Activity.RESULT_OK) {
+            String errorCode = data == null
+                ? null
+                : data.getStringExtra(CameraActivity.EXTRA_ERROR_CODE);
+            String errorMessage = data == null
+                ? null
+                : data.getStringExtra(CameraActivity.EXTRA_ERROR_MESSAGE);
+            if (errorCode != null && !errorCode.isEmpty()) {
+                String message = errorMessage == null || errorMessage.isEmpty()
+                    ? "Camera capture failed"
+                    : errorMessage;
+                Log.e(TAG, "capturePhoto result=error code=" + errorCode + " message=" + message);
+                call.reject(message, errorCode);
+                return;
+            }
+
             Log.i(TAG, "capturePhoto result=cancelled resultCode=" + result.getResultCode());
-            clearPendingPhoto();
             call.reject("Photo capture was cancelled", "CAPTURE_CANCELLED");
             return;
         }
-        if (pendingPhoto == null || !pendingPhoto.exists() || pendingPhoto.length() == 0) {
+
+        String photoPath = data == null
+            ? null
+            : data.getStringExtra(CameraActivity.EXTRA_PHOTO_PATH);
+        File photo = photoPath == null ? null : new File(photoPath);
+        boolean expectedPhoto = isExpectedPhoto(photo);
+        if (!expectedPhoto || !photo.exists() || photo.length() == 0) {
             Log.e(TAG, "capturePhoto result=empty resultCode=" + result.getResultCode());
-            clearPendingPhoto();
+            if (expectedPhoto) {
+                deletePhoto(photo);
+            }
             call.reject("Camera returned an empty photo", "CAPTURE_EMPTY");
             return;
         }
 
         try {
-            long size = pendingPhoto.length();
-            byte[] bytes = readBytes(pendingPhoto);
+            long size = photo.length();
+            byte[] bytes = readBytes(photo);
             JSObject response = new JSObject();
             response.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
             response.put("mimeType", "image/jpeg");
@@ -106,10 +106,24 @@ public class CameraCapturePlugin extends Plugin {
             Log.i(TAG, "capturePhoto result=success sizeBytes=" + size);
             call.resolve(response);
         } catch (Exception error) {
-            Log.e(TAG, "capturePhoto result=read_failed", error);
+            Log.e(TAG, "capturePhoto result=read_failed path=" + photo.getAbsolutePath(), error);
             call.reject("Unable to read captured photo", "CAPTURE_READ_FAILED", error);
         } finally {
-            clearPendingPhoto();
+            deletePhoto(photo);
+        }
+    }
+
+    private boolean isExpectedPhoto(File photo) {
+        if (photo == null) {
+            return false;
+        }
+        try {
+            File cameraDir = new File(getContext().getCacheDir(), CameraActivity.CAMERA_CACHE_DIR);
+            String expectedPrefix = cameraDir.getCanonicalPath() + File.separator;
+            return photo.getCanonicalPath().startsWith(expectedPrefix);
+        } catch (IOException error) {
+            Log.e(TAG, "capturePhoto result=invalid_path path=" + photo.getAbsolutePath(), error);
+            return false;
         }
     }
 
@@ -127,17 +141,9 @@ public class CameraCapturePlugin extends Plugin {
         }
     }
 
-    private void clearPendingPhoto() {
-        if (pendingPhotoUri != null) {
-            getContext().revokeUriPermission(
-                pendingPhotoUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            );
+    private void deletePhoto(File photo) {
+        if (photo != null && photo.exists() && !photo.delete()) {
+            Log.w(TAG, "capturePhoto result=cleanup_failed path=" + photo.getAbsolutePath());
         }
-        if (pendingPhoto != null && pendingPhoto.exists()) {
-            pendingPhoto.delete();
-        }
-        pendingPhoto = null;
-        pendingPhotoUri = null;
     }
 }

@@ -39,8 +39,8 @@ class AppReleaseTests(APITestCase):
         response = self.client.get('/api/design/app-version/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['version'], '1.3.6')
-        self.assertEqual(response.data['build'], 13)
+        self.assertEqual(response.data['version'], '1.3.7')
+        self.assertEqual(response.data['build'], 14)
         self.assertEqual(
             response.data['external_apk_url'],
             'https://github.com/b1745740596-art/arch--platform/'
