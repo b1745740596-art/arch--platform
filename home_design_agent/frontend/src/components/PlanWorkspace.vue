@@ -8,12 +8,16 @@ import { useStudioStore } from '@/stores/studio'
 import { useTerm } from '@/i18n'
 import { resolveMediaUrl } from '@/utils/media'
 import { clampModuleCodes, validateImageFile } from '@/utils/validation'
+import { isNativeApp } from '@/utils/app'
 import DesignCoach from '@/components/DesignCoach.vue'
 
 const router = useRouter()
 const studio = useStudioStore()
 const { t } = useI18n()
 const term = useTerm()
+const isApp = computed(() => isNativeApp())
+const cameraInput = ref(null)
+const galleryInput = ref(null)
 
 const steps = [
   { key: 'upload', labelKey: 'plan.stepUpload' },
@@ -164,28 +168,56 @@ function goToStep(index) {
 
 const MAX_UPLOAD_IMAGES = 8
 
-function onFileChange(file) {
-  const raw = file?.raw
+async function addImage(raw) {
   if (!raw) return
   if (draft.images.length >= MAX_UPLOAD_IMAGES) {
     ElMessage.warning(t('plan.uploadLimit', { max: MAX_UPLOAD_IMAGES }))
     return
   }
   draft.imageErrors = []
-  validateImageFile(raw, studio.imageRules).then(({ ok, errors, meta }) => {
-    if (!ok) {
-      draft.imageErrors = errors
-      ElMessage.error(errors[0])
-      return
-    }
-    draft.images.push({
-      id: `image-${Date.now()}-${imageSequence += 1}`,
-      file: raw,
-      url: URL.createObjectURL(raw),
-      meta,
-      room_type: '',
-    })
+  const { ok, errors, meta } = await validateImageFile(raw, studio.imageRules)
+  if (!ok) {
+    draft.imageErrors = errors
+    ElMessage.error(errors[0])
+    return
+  }
+  if (draft.images.length >= MAX_UPLOAD_IMAGES) {
+    ElMessage.warning(t('plan.uploadLimit', { max: MAX_UPLOAD_IMAGES }))
+    return
+  }
+  draft.images.push({
+    id: `image-${Date.now()}-${imageSequence += 1}`,
+    file: raw,
+    url: URL.createObjectURL(raw),
+    meta,
+    room_type: '',
   })
+}
+
+function onFileChange(file) {
+  void addImage(file?.raw)
+}
+
+async function onNativeFiles(event) {
+  const input = event.currentTarget
+  const files = Array.from(input?.files || [])
+  // 允许连续拍摄或重复选择同一张图片。
+  if (input) input.value = ''
+  for (const file of files) {
+    if (draft.images.length >= MAX_UPLOAD_IMAGES) {
+      ElMessage.warning(t('plan.uploadLimit', { max: MAX_UPLOAD_IMAGES }))
+      break
+    }
+    await addImage(file)
+  }
+}
+
+function openCamera() {
+  cameraInput.value?.click()
+}
+
+function openGallery() {
+  galleryInput.value?.click()
 }
 
 function removeImage(index) {
@@ -373,8 +405,18 @@ async function packageRecords() {
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
+            <template v-if="isApp && draft.images.length < MAX_UPLOAD_IMAGES">
+              <button type="button" class="add-tile source-tile" @click="openCamera">
+                <el-icon><Camera /></el-icon>
+                <span>{{ t('plan.takePhoto') }}</span>
+              </button>
+              <button type="button" class="add-tile source-tile" @click="openGallery">
+                <el-icon><Picture /></el-icon>
+                <span>{{ t('plan.chooseAlbum') }}</span>
+              </button>
+            </template>
             <el-upload
-              v-if="draft.images.length < MAX_UPLOAD_IMAGES"
+              v-else-if="draft.images.length < MAX_UPLOAD_IMAGES"
               class="upload-add"
               :auto-upload="false"
               :show-file-list="false"
@@ -387,6 +429,21 @@ async function packageRecords() {
                 <span>{{ t('plan.addMore') }}</span>
               </div>
             </el-upload>
+          </div>
+          <div v-else-if="isApp" class="native-upload-panel">
+            <el-icon class="upload-ic"><UploadFilled /></el-icon>
+            <div class="native-upload-title">{{ t('plan.uploadPhotoTitle') }}</div>
+            <small>{{ t('plan.uploadPhotoHint') }}</small>
+            <div class="native-upload-actions">
+              <button type="button" class="native-source-button camera" @click="openCamera">
+                <el-icon><Camera /></el-icon>
+                <span>{{ t('plan.takePhoto') }}</span>
+              </button>
+              <button type="button" class="native-source-button" @click="openGallery">
+                <el-icon><Picture /></el-icon>
+                <span>{{ t('plan.chooseAlbum') }}</span>
+              </button>
+            </div>
           </div>
           <el-upload
             v-else
@@ -403,6 +460,22 @@ async function packageRecords() {
               <small>{{ t('win.uploadTip') }}</small>
             </div>
           </el-upload>
+          <input
+            ref="cameraInput"
+            class="native-file-input"
+            type="file"
+            accept="image/*"
+            capture="environment"
+            @change="onNativeFiles"
+          />
+          <input
+            ref="galleryInput"
+            class="native-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+            multiple
+            @change="onNativeFiles"
+          />
           <el-alert
             v-if="draft.imageErrors.length"
             type="error"
@@ -781,6 +854,7 @@ async function packageRecords() {
 
 .upload-add { display: block; }
 .add-tile {
+  width: 100%;
   aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
@@ -793,12 +867,65 @@ async function packageRecords() {
   font-size: 12px;
   cursor: pointer;
   background: rgba(255, 255, 255, 0.66);
+  font-family: inherit;
 }
 
 .add-tile .el-icon { font-size: 24px; }
+.source-tile { appearance: none; }
 
 .upload-ic { font-size: 34px; color: var(--brand-green); }
 .upload-empty { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.native-upload-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 20px 14px 16px;
+  border: 1.5px dashed rgba(35, 169, 124, 0.38);
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(240, 252, 247, 0.92), rgba(255, 255, 255, 0.98));
+  text-align: center;
+}
+.native-upload-title { color: var(--brand-ink); font-size: 14px; font-weight: 800; }
+.native-upload-panel small { color: var(--brand-muted); font-size: 11px; }
+.native-upload-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 5px;
+}
+.native-source-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(35, 169, 124, 0.32);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--brand-green-deep);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.native-source-button.camera {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--brand-green), var(--brand-green-deep));
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(35, 169, 124, 0.2);
+}
+.native-source-button .el-icon { font-size: 18px; }
+.native-file-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .preview-wrap { display: flex; justify-content: center; }
 .preview-img { max-width: 100%; max-height: 220px; border-radius: 12px; }
 .image-meta { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--brand-muted); }
