@@ -1,10 +1,9 @@
 {
-  "version": "1.3.5",
-  "build": 12,
-  "apk_url": "/media/app/arch-ai.apk?v=1.3.5",
+  "version": "1.3.4",
+  "build": 11,
+  "apk_url": "/media/app/arch-ai.apk?v=1.3.4",
   "changelog": [
-    "生图支持直接拍照上传",
-    "统一拍照与相册上传按钮样式"
+    "App 内直接下载并拉起安装器"
   ],
   "force_update": false
 }
