@@ -79,7 +79,7 @@ def health(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def showcase_images(request):
-    """返回当前用户最近成功生成的 AI 效果图。"""
+    """返回平台案例库中的成功效果图，不暴露项目或客户字段。"""
     room_type = request.query_params.get('room_type', '')
     try:
         limit = max(1, min(int(request.query_params.get('limit', 3)), 12))
@@ -88,7 +88,6 @@ def showcase_images(request):
 
     jobs = RenderJob.objects.filter(
         status=RenderJob.Status.SUCCESS,
-        project__user=request.user,
     ).order_by('-created_at')
     if room_type:
         jobs = jobs.filter(room_type=room_type)

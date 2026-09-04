@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { t } from '@/i18n'
 import {
@@ -7,6 +7,7 @@ import {
   DEFAULT_MAX_MODULES,
   DEFAULT_REQUIREMENT_MAX_LENGTH,
   DEFAULT_VARIANT_MAX,
+  clampModuleCodes,
   validateEnum,
   validateRequirement,
 } from '@/utils/validation'
@@ -14,6 +15,7 @@ import {
 // 多窗口工作台的窗口上限与生成并发上限
 export const MAX_WINDOWS = 6
 export const MAX_CONCURRENT = 3
+export const SESSION_PROJECT_STORAGE_KEY = 'studio.sessionProjectId'
 
 // 窗口状态机：draft(草稿) → validating(校验中) → queued(排队中) → running(生成中) → success / failed
 // label 通过 i18n key 惰性取值，切换语言后随之更新
@@ -48,6 +50,43 @@ function nextId() {
 }
 
 let titleSeq = 0
+
+let jobSeq = 0
+function nextJobId() {
+  jobSeq += 1
+  return `job-${Date.now()}-${jobSeq}`
+}
+
+function readSessionProjectId() {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    const stored = window.localStorage.getItem(SESSION_PROJECT_STORAGE_KEY)
+    if (!stored) return null
+    try {
+      const parsed = JSON.parse(stored)
+      return parsed == null || parsed === '' ? null : parsed
+    } catch {
+      // 兼容旧版本可能直接写入的纯字符串值。
+      return stored
+    }
+  } catch {
+    // 隐私模式或 WebView 禁用存储时，退回当前页面内存态。
+    return null
+  }
+}
+
+function persistSessionProjectId(projectId) {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    if (projectId == null || projectId === '') {
+      window.localStorage.removeItem(SESSION_PROJECT_STORAGE_KEY)
+    } else {
+      window.localStorage.setItem(SESSION_PROJECT_STORAGE_KEY, JSON.stringify(projectId))
+    }
+  } catch {
+    // localStorage 不可用不应阻断生图主流程。
+  }
+}
 
 function createWindow(preset = {}) {
   return {
@@ -91,12 +130,22 @@ export const useStudioStore = defineStore('studio', () => {
   // 生图工作流（后台编排，前端只读展示与选择）
   const workflows = ref([])
   // 当前工作台会话共享的项目 ID：同一批窗口合并为同一项目/报告/订单
-  const sessionProjectId = ref(null)
+  const sessionProjectId = ref(readSessionProjectId())
+  watch(sessionProjectId, persistSessionProjectId, { flush: 'sync' })
+  // 多个并发任务同时首次提交时，只创建一个共享项目。
+  let projectCreationPromise = null
 
   // 等待执行的窗口 id 队列（FIFO）
   const queue = reactive([])
+  // 窗口与通用任务共用同一条内部 FIFO，确保总并发不超过 MAX_CONCURRENT。
+  // queue 继续只暴露窗口 id，保持旧多窗口板的数据模型和外部行为不变。
+  const pending = []
   // 正在生成中的窗口 id
   const running = reactive(new Set())
+  // 通用任务状态与请求控制器不进入 windows[]，由 enqueueJob 返回独立 handle。
+  const jobEntries = new Map()
+  const jobRunning = new Set()
+  const jobControllers = new Map()
   const runningCount = ref(0)
   // 每个窗口的 AbortController，用于关闭窗口时取消请求
   const controllers = new Map()
@@ -135,15 +184,24 @@ export const useStudioStore = defineStore('studio', () => {
   )
 
   const canAddWindow = computed(() => windows.length < MAX_WINDOWS)
-  const busyCount = computed(() => windows.filter((w) => w.status === 'running').length)
+  // 两种工作台共用调度器，忙碌数也应反映全局占用，避免专业模式误报“立即开始”。
+  const busyCount = computed(() => runningCount.value)
   const queuedCount = computed(() => windows.filter((w) => w.status === 'queued').length)
 
   function defaultPreset() {
+    const { codes: defaultModuleCodes } = clampModuleCodes(
+      modules.value.filter((module) => module.is_default).map((module) => module.code),
+      {
+        modules: modules.value,
+        groups: groups.value,
+        maxModules: maxModules.value,
+      },
+    )
     return {
       room_type: options.value.room_types?.[0] || '',
       style: options.value.styles?.[0] || '',
       budget_tier: options.value.budget_tiers?.[1] || options.value.budget_tiers?.[0] || '',
-      moduleCodes: modules.value.filter((m) => m.is_default).map((m) => m.code),
+      moduleCodes: defaultModuleCodes,
       workflowId: defaultWorkflowId.value,
     }
   }
@@ -243,10 +301,11 @@ export const useStudioStore = defineStore('studio', () => {
     }
     if (running.has(id)) {
       running.delete(id)
-      runningCount.value = running.size
+      syncRunningCount()
     }
     const qi = queue.indexOf(id)
     if (qi >= 0) queue.splice(qi, 1)
+    removePending('window', id)
     windows.splice(idx, 1)
     pump()
   }
@@ -305,6 +364,21 @@ export const useStudioStore = defineStore('studio', () => {
 
   // ------------------------------------------------------------ 并发队列
 
+  function totalRunning() {
+    return running.size + jobRunning.size
+  }
+
+  function syncRunningCount() {
+    runningCount.value = totalRunning()
+  }
+
+  function removePending(kind, id) {
+    for (let index = pending.length - 1; index >= 0; index -= 1) {
+      const item = pending[index]
+      if (item.kind === kind && item.id === id) pending.splice(index, 1)
+    }
+  }
+
   /** 入队：校验通过则进入排队，由 pump() 按并发上限调度 */
   function enqueue(id) {
     const win = windows.find((w) => w.id === id)
@@ -314,7 +388,10 @@ export const useStudioStore = defineStore('studio', () => {
     win.status = 'queued'
     win.error = ''
     win.elapsed = 0
-    if (!queue.includes(id)) queue.push(id)
+    if (!queue.includes(id)) {
+      queue.push(id)
+      pending.push({ kind: 'window', id })
+    }
     pump()
     return true
   }
@@ -330,20 +407,79 @@ export const useStudioStore = defineStore('studio', () => {
     return count
   }
 
-  /** 调度器：只要并发未满且队列非空就取队首执行 */
+  /**
+   * 通用生图任务入队。任务不写入 windows[]；返回的响应式 handle 可直接渲染：
+   * queued → running → success / failed，并通过 wait()/promise 等待完成。
+   *
+   * 回调签名：onSuccess(result, task)、onError(error, task)、
+   * onComplete(task) / onSettled(task)。回调异常不会改变生成结果。
+   */
+  function enqueueJob(payload = {}) {
+    const normalized = isFormData(payload) ? { formData: payload } : (payload || {})
+    const id = nextJobId()
+    let resolveCompletion
+    let rejectCompletion
+    const completion = new Promise((resolve, reject) => {
+      resolveCompletion = resolve
+      rejectCompletion = reject
+    })
+    // 即使调用方只使用回调而不 wait，也不产生未处理的 rejection。
+    void completion.catch(() => {})
+
+    const task = reactive({
+      id,
+      status: 'queued',
+      result: null,
+      error: '',
+      elapsed: 0,
+      startedAt: 0,
+      projectId: payloadProjectId(normalized),
+      promise: completion,
+      wait: () => completion,
+      cancel: (reason) => cancelJob(id, reason),
+    })
+    const entry = {
+      id,
+      task,
+      payload: normalized,
+      callbacks: {
+        onSuccess: normalized.onSuccess,
+        onError: normalized.onError,
+        onComplete: normalized.onComplete,
+        onSettled: normalized.onSettled,
+      },
+      resolve: resolveCompletion,
+      reject: rejectCompletion,
+      settled: false,
+    }
+    jobEntries.set(id, entry)
+    pending.push({ kind: 'job', id })
+    pump()
+    return task
+  }
+
+  /** 窗口与通用任务共用调度器，总并发严格限制为 MAX_CONCURRENT。 */
   function pump() {
-    while (running.size < MAX_CONCURRENT && queue.length > 0) {
-      const id = queue.shift()
-      const win = windows.find((w) => w.id === id)
-      if (!win || win.status !== 'queued') continue
-      void execute(win)
+    while (totalRunning() < MAX_CONCURRENT && pending.length > 0) {
+      const item = pending.shift()
+      if (item.kind === 'window') {
+        const qi = queue.indexOf(item.id)
+        if (qi >= 0) queue.splice(qi, 1)
+        const win = windows.find((w) => w.id === item.id)
+        if (!win || win.status !== 'queued') continue
+        void execute(win)
+      } else {
+        const entry = jobEntries.get(item.id)
+        if (!entry || entry.task.status !== 'queued') continue
+        void executeJob(entry)
+      }
     }
     ensureTimer()
   }
 
   async function execute(win) {
     running.add(win.id)
-    runningCount.value = running.size
+    syncRunningCount()
     win.status = 'running'
     win.startedAt = Date.now()
     win.elapsed = 0
@@ -354,7 +490,7 @@ export const useStudioStore = defineStore('studio', () => {
     controllers.set(win.id, controller)
 
     try {
-      const projectId = await ensureProject(win, controller.signal)
+      const projectId = await ensureProject(win)
       const fd = new FormData()
       fd.append('project', projectId)
       fd.append('room_type', win.form.room_type)
@@ -386,7 +522,7 @@ export const useStudioStore = defineStore('studio', () => {
     } finally {
       controllers.delete(win.id)
       running.delete(win.id)
-      runningCount.value = running.size
+      syncRunningCount()
       if (win.startedAt) {
         win.elapsed = Math.max(0, Math.round((Date.now() - win.startedAt) / 1000))
       }
@@ -395,19 +531,194 @@ export const useStudioStore = defineStore('studio', () => {
     }
   }
 
-  async function ensureProject(win, signal) {
-    if (win.projectId) return win.projectId
-    if (sessionProjectId.value) {
+  async function ensureSharedProject(title) {
+    if (sessionProjectId.value != null && sessionProjectId.value !== '') {
+      return sessionProjectId.value
+    }
+    if (!projectCreationPromise) {
+      projectCreationPromise = (async () => {
+        const project = await api.createProject({ title })
+        if (project?.id == null || project.id === '') {
+          throw new Error('Project creation returned no id')
+        }
+        sessionProjectId.value = project.id
+        return project.id
+      })()
+    }
+    const currentCreation = projectCreationPromise
+    try {
+      return await currentCreation
+    } finally {
+      if (projectCreationPromise === currentCreation) projectCreationPromise = null
+    }
+  }
+
+  async function ensureProject(win) {
+    if (win.projectId != null && win.projectId !== '') return win.projectId
+    if (sessionProjectId.value != null && sessionProjectId.value !== '') {
       win.projectId = sessionProjectId.value
       return sessionProjectId.value
     }
-    const project = await api.createProject(
-      { title: t('render.projectTitle', { room: win.form.room_type, style: win.form.style }) },
-      { signal },
+    const projectId = await ensureSharedProject(
+      t('render.projectTitle', { room: win.form.room_type, style: win.form.style }),
     )
-    sessionProjectId.value = project.id
-    win.projectId = project.id
-    return project.id
+    win.projectId = projectId
+    return projectId
+  }
+
+  function isFormData(value) {
+    return typeof FormData !== 'undefined' && value instanceof FormData
+  }
+
+  function payloadProjectId(payload) {
+    const explicit = payload?.projectId ?? payload?.project_id
+    if (explicit != null && explicit !== '') return explicit
+    if (isFormData(payload?.formData)) {
+      const fromForm = payload.formData.get('project')
+      if (fromForm != null && fromForm !== '') return fromForm
+    }
+    return null
+  }
+
+  async function ensureJobProject(payload) {
+    const explicit = payloadProjectId(payload)
+    if (explicit != null && explicit !== '') {
+      // 显式项目也成为当前共享项目，保证刷新后可以回灌同一批结果。
+      sessionProjectId.value = explicit
+      return explicit
+    }
+    const room = payload.room_type ?? payload.roomType ?? ''
+    const style = payload.style ?? ''
+    const title = payload.projectTitle
+      || payload.project_title
+      || t('render.projectTitle', { room, style })
+    return ensureSharedProject(title)
+  }
+
+  function copyFormData(source) {
+    const target = new FormData()
+    for (const [key, value] of source.entries()) target.append(key, value)
+    return target
+  }
+
+  function appendFormValue(formData, name, value) {
+    if (value == null || formData.has(name)) return
+    formData.append(name, value)
+  }
+
+  function buildJobFormData(payload, projectId) {
+    const formData = isFormData(payload.formData) ? copyFormData(payload.formData) : new FormData()
+    appendFormValue(formData, 'project', projectId)
+    appendFormValue(formData, 'room_type', payload.room_type ?? payload.roomType)
+    appendFormValue(formData, 'style', payload.style)
+    appendFormValue(formData, 'budget_tier', payload.budget_tier ?? payload.budgetTier)
+    appendFormValue(formData, 'requirement', payload.requirement ?? '')
+    appendFormValue(formData, 'raw_photo', payload.rawPhoto ?? payload.raw_photo ?? payload.file)
+
+    const moduleCodes = payload.moduleCodes ?? payload.module_codes
+    if (Array.isArray(moduleCodes)) {
+      if (moduleCodes.length) appendFormValue(formData, 'module_codes', moduleCodes.join(','))
+    } else if (moduleCodes != null && moduleCodes !== '') {
+      appendFormValue(formData, 'module_codes', moduleCodes)
+    }
+    appendFormValue(formData, 'workflow', payload.workflowId ?? payload.workflow)
+    return formData
+  }
+
+  async function executeJob(entry) {
+    const { task, payload } = entry
+    jobRunning.add(entry.id)
+    syncRunningCount()
+    task.status = 'running'
+    task.startedAt = Date.now()
+    task.elapsed = 0
+    task.error = ''
+    ensureTimer()
+
+    const controller = new AbortController()
+    jobControllers.set(entry.id, controller)
+    let failure = null
+
+    try {
+      const projectId = await ensureJobProject(payload)
+      task.projectId = projectId
+      const formData = buildJobFormData(payload, projectId)
+      const requestConfig = payload.requestConfig || payload.config || {}
+      const result = await api.createRender(formData, { ...requestConfig, signal: controller.signal })
+      task.result = result
+      if (result?.status === 'failed') {
+        const error = new Error(result.error || t('studio.genFailed'))
+        error.result = result
+        throw error
+      }
+      task.status = 'success'
+    } catch (error) {
+      // 保留 Axios/DRF 原始错误对象，wait() 的 rejected reason 可读取 response/status。
+      failure = error || new Error('Unknown generation error')
+      task.status = 'failed'
+      task.error = extractError(failure)
+    } finally {
+      jobControllers.delete(entry.id)
+      jobRunning.delete(entry.id)
+      syncRunningCount()
+      if (task.startedAt) {
+        task.elapsed = Math.max(0, Math.round((Date.now() - task.startedAt) / 1000))
+      }
+      settleJob(entry, failure)
+      pump()
+    }
+  }
+
+  function invokeJobCallback(callback, ...args) {
+    if (typeof callback !== 'function') return
+    try {
+      const returned = callback(...args)
+      if (returned && typeof returned.catch === 'function') {
+        returned.catch((error) => console.error('[studio] job callback failed', error))
+      }
+    } catch (error) {
+      console.error('[studio] job callback failed', error)
+    }
+  }
+
+  function settleJob(entry, failure) {
+    if (!entry || entry.settled) return
+    entry.settled = true
+    jobEntries.delete(entry.id)
+    const { task, callbacks } = entry
+    if (failure) {
+      task.status = 'failed'
+      task.error = task.error || extractError(failure)
+      invokeJobCallback(callbacks.onError, failure, task)
+    } else {
+      task.status = 'success'
+      task.error = ''
+      invokeJobCallback(callbacks.onSuccess, task.result, task)
+    }
+    invokeJobCallback(callbacks.onComplete, task)
+    invokeJobCallback(callbacks.onSettled, task)
+    if (failure) entry.reject(failure)
+    else entry.resolve(task.result)
+  }
+
+  function cancelJob(id, reason) {
+    const entry = jobEntries.get(id)
+    if (!entry || entry.settled) return false
+    const controller = jobControllers.get(id)
+    if (controller) {
+      controller.abort(reason)
+      return true
+    }
+
+    removePending('job', id)
+    const error = reason instanceof Error ? reason : new Error(reason || 'Generation canceled')
+    error.name = 'CanceledError'
+    error.code = 'ERR_CANCELED'
+    entry.task.status = 'failed'
+    entry.task.error = error.message
+    settleJob(entry, error)
+    pump()
+    return true
   }
 
   /** 重试：已有 render 则调 regenerate，否则重新入队提交 */
@@ -418,12 +729,12 @@ export const useStudioStore = defineStore('studio', () => {
       enqueue(id)
       return
     }
-    if (running.size >= MAX_CONCURRENT) {
+    if (totalRunning() >= MAX_CONCURRENT) {
       enqueue(id)
       return
     }
     running.add(win.id)
-    runningCount.value = running.size
+    syncRunningCount()
     win.status = 'running'
     win.startedAt = Date.now()
     win.elapsed = 0
@@ -447,7 +758,7 @@ export const useStudioStore = defineStore('studio', () => {
     } finally {
       controllers.delete(win.id)
       running.delete(win.id)
-      runningCount.value = running.size
+      syncRunningCount()
       win.elapsed = Math.max(0, Math.round((Date.now() - win.startedAt) / 1000))
       pump()
     }
@@ -468,15 +779,22 @@ export const useStudioStore = defineStore('studio', () => {
 
   // ------------------------------------------------------------ 计时器
 
-  // 单一定时器统一驱动所有「生成中」窗口的耗时秒数
+  // 单一定时器统一驱动所有「生成中」窗口与通用任务的耗时秒数
   function ensureTimer() {
-    const active = windows.some((w) => w.status === 'running')
+    const active = windows.some((w) => w.status === 'running') || jobRunning.size > 0
     if (active && !timer) {
       timer = setInterval(() => {
         let stillActive = false
         for (const w of windows) {
           if (w.status === 'running' && w.startedAt) {
             w.elapsed = Math.max(0, Math.round((Date.now() - w.startedAt) / 1000))
+            stillActive = true
+          }
+        }
+        for (const id of jobRunning) {
+          const task = jobEntries.get(id)?.task
+          if (task?.status === 'running' && task.startedAt) {
+            task.elapsed = Math.max(0, Math.round((Date.now() - task.startedAt) / 1000))
             stillActive = true
           }
         }
@@ -501,10 +819,24 @@ export const useStudioStore = defineStore('studio', () => {
   function dispose() {
     stopTimer()
     for (const controller of controllers.values()) controller.abort()
+    for (const controller of jobControllers.values()) controller.abort()
     controllers.clear()
+    jobControllers.clear()
     running.clear()
-    runningCount.value = 0
+    jobRunning.clear()
+    syncRunningCount()
     queue.splice(0, queue.length)
+    pending.splice(0, pending.length)
+    // 尚未开始的通用任务不会收到 AbortSignal，需在这里主动完成为失败态。
+    for (const entry of [...jobEntries.values()]) {
+      if (entry.task.status !== 'queued') continue
+      const error = new Error('Generation canceled')
+      error.name = 'CanceledError'
+      error.code = 'ERR_CANCELED'
+      entry.task.status = 'failed'
+      entry.task.error = error.message
+      settleJob(entry, error)
+    }
     for (const w of windows) {
       releasePreview(w)
       if (['running', 'queued', 'validating'].includes(w.status)) {
@@ -591,6 +923,8 @@ export const useStudioStore = defineStore('studio', () => {
     isSubmittable,
     enqueue,
     enqueueAll,
+    enqueueJob,
+    cancelJob,
     retry,
     fetchVariants,
     dispose,

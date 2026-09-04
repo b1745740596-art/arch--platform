@@ -31,6 +31,8 @@ const steps = [
 const step = ref(0)
 const submitting = ref(false)
 const records = ref([])
+const recordsLoading = ref(false)
+const batchJobs = ref([])
 const projectId = ref(studio.sessionProjectId || null)
 const projectName = ref('')
 const selectedRecordId = ref(null)
@@ -53,6 +55,16 @@ const draft = reactive({
 const currentStep = computed(() => steps[step.value])
 const selectedRecord = computed(
   () => records.value.find((record) => record.id === selectedRecordId.value) || records.value[0] || null,
+)
+const recordImageUrls = computed(() =>
+  records.value
+    .map((record) => resolveMediaUrl(record.result?.result_url))
+    .filter(Boolean),
+)
+const furnitureImageUrls = computed(() =>
+  (selectedRecord.value?.result?.furnitures || [])
+    .map((item) => resolveMediaUrl(item.image_url))
+    .filter(Boolean),
 )
 
 function applyDesignerPatch(patch) {
@@ -93,17 +105,96 @@ function money(value) {
   return value == null ? t('common.dash') : '¥' + Number(value).toLocaleString()
 }
 
+function expectedWorkflowMode(record) {
+  if (record?.workflow_mode) return record.workflow_mode
+  const workflowId = record?.result?.workflow
+  return workflowId == null ? '' : studio.workflowById(workflowId)?.mode || ''
+}
+
+function renderModeDowngraded(record) {
+  return expectedWorkflowMode(record) === 'img2img' && record?.result?.render_mode === 'text2img'
+}
+
+function modeLabel(mode) {
+  return mode === 'img2img' ? t('win.modeImg2Img') : t('win.modeText2Img')
+}
+
+function statusTagType(status) {
+  return {
+    queued: 'warning',
+    running: 'primary',
+    success: 'success',
+    failed: 'danger',
+  }[status] || 'info'
+}
+
+function renderToRecord(result) {
+  const workflowMode = result?.workflow == null ? '' : studio.workflowById(result.workflow)?.mode || ''
+  return {
+    id: String(result.id),
+    title: recordName(result),
+    room_type: result.room_type,
+    style: result.style,
+    budget_tier: result.budget_tier,
+    result,
+    workflow_mode: workflowMode,
+    created_at: result.created_at || new Date().toISOString(),
+  }
+}
+
 function ensureDraftDefaults() {
   const preset = studio.defaultPreset()
   draft.plan_name = draft.plan_name || projectName.value
   draft.style = draft.style || preset.style
   draft.budget_tier = draft.budget_tier || preset.budget_tier
+  if (draft.workflowId == null) draft.workflowId = preset.workflowId
 }
 
 onMounted(async () => {
   if (!projectId.value) projectId.value = studio.sessionProjectId || null
   await studio.loadOptions()
   ensureDraftDefaults()
+  if (!projectId.value) return
+
+  recordsLoading.value = true
+  try {
+    const [projectState, rendersState] = await Promise.allSettled([
+      api.getProject(projectId.value),
+      api.listRenders(projectId.value),
+    ])
+    if (
+      projectState.status === 'rejected'
+      && [403, 404].includes(projectState.reason?.response?.status)
+    ) {
+      projectId.value = null
+      studio.sessionProjectId = null
+      records.value = []
+      return
+    }
+    if (rendersState.status === 'rejected') throw rendersState.reason
+
+    const project = projectState.status === 'fulfilled' ? projectState.value : null
+    const data = rendersState.value
+    projectName.value = project?.title || ''
+    const list = Array.isArray(data) ? data : data?.results || []
+    records.value = list
+      .filter((result) => result?.status === 'success')
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+      .map(renderToRecord)
+    selectedRecordId.value = records.value[0]?.id || null
+  } catch (error) {
+    if ([403, 404].includes(error?.response?.status)) {
+      projectId.value = null
+      studio.sessionProjectId = null
+      records.value = []
+      return
+    }
+    const data = error?.response?.data
+    const msg = data?.detail || (data ? Object.values(data).flat().join('；') : error.message)
+    ElMessage.warning(t('plan.recordsLoadFailed', { msg }))
+  } finally {
+    recordsLoading.value = false
+  }
 })
 
 function releaseDraftImages() {
@@ -115,6 +206,7 @@ function releaseDraftImages() {
 
 function resetDraft() {
   releaseDraftImages()
+  batchJobs.value = []
   draft.imageErrors = []
   draft.room_type = ''
   draft.style = ''
@@ -172,7 +264,7 @@ function goToStep(index) {
 const MAX_UPLOAD_IMAGES = 8
 
 async function addImage(raw) {
-  if (!raw) return
+  if (!raw || submitting.value) return
   if (draft.images.length >= MAX_UPLOAD_IMAGES) {
     ElMessage.warning(t('plan.uploadLimit', { max: MAX_UPLOAD_IMAGES }))
     return
@@ -194,6 +286,9 @@ async function addImage(raw) {
     url: URL.createObjectURL(raw),
     meta,
     room_type: '',
+    status: 'draft',
+    error: '',
+    elapsed: 0,
   })
 }
 
@@ -284,7 +379,10 @@ function removeImage(index) {
 }
 
 async function ensureProject() {
-  if (projectId.value) return projectId.value
+  if (projectId.value) {
+    if (studio.sessionProjectId !== projectId.value) studio.sessionProjectId = projectId.value
+    return projectId.value
+  }
   const title = draft.plan_name.trim() || t('render.projectTitle', { room: draft.room_type, style: draft.style })
   const project = await api.createProject({ title })
   projectId.value = project.id
@@ -299,44 +397,79 @@ async function generate() {
     return
   }
   submitting.value = true
+  batchJobs.value = []
   try {
     const pid = await ensureProject()
-    const created = []
-    for (let index = 0; index < draft.images.length; index += 1) {
-      const image = draft.images[index]
-      const fd = new FormData()
-      fd.append('project', pid)
-      fd.append('room_type', image.room_type)
-      fd.append('style', draft.style)
-      fd.append('budget_tier', draft.budget_tier)
-      fd.append('requirement', draft.requirement || '')
-      fd.append('raw_photo', image.file)
-      if (draft.moduleCodes.length) fd.append('module_codes', draft.moduleCodes.join(','))
-      if (draft.workflowId != null) fd.append('workflow', draft.workflowId)
-
-      const result = await api.createRender(fd)
-      if (result?.status === 'failed') {
-        ElMessage.error(result.error || t('common.unknownError'))
-        continue
-      }
-
-      const record = {
-        id: `${result.id || Date.now()}-${records.value.length}`,
-        title: recordName({ room_type: image.room_type }),
+    const sourceImages = [...draft.images]
+    const workflowMode = studio.workflowById(draft.workflowId)?.mode || ''
+    const jobs = sourceImages.map((image) => {
+      const task = studio.enqueueJob({
+        projectId: pid,
+        projectTitle: draft.plan_name.trim(),
         room_type: image.room_type,
         style: draft.style,
         budget_tier: draft.budget_tier,
-        result,
-        created_at: new Date().toISOString(),
+        requirement: draft.requirement || '',
+        moduleCodes: [...draft.moduleCodes],
+        workflowId: draft.workflowId,
+        rawPhoto: image.file,
+      })
+      return {
+        id: task.id,
+        title: recordName({ room_type: image.room_type }),
+        image,
+        room_type: image.room_type,
+        style: draft.style,
+        budget_tier: draft.budget_tier,
+        workflow_mode: workflowMode,
+        task,
       }
-      records.value.unshift(record)
-      created.push(record)
+    })
+    batchJobs.value = jobs
+
+    const completed = await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          const result = await job.task.wait()
+          const record = {
+            ...renderToRecord(result),
+            title: job.title,
+            room_type: result?.room_type || job.room_type,
+            style: result?.style || job.style,
+            budget_tier: result?.budget_tier || job.budget_tier,
+            workflow_mode: job.workflow_mode || expectedWorkflowMode({ result }),
+          }
+          if (!records.value.some((item) => item.id === record.id)) records.value.unshift(record)
+          return record
+        } catch {
+          return null
+        }
+      }),
+    )
+
+    const created = completed.filter(Boolean)
+    const failedIds = new Set(
+      jobs.filter((job) => job.task.status === 'failed').map((job) => job.image.id),
+    )
+    if (created.length) selectedRecordId.value = records.value[0]?.id || null
+
+    if (!failedIds.size) {
+      ElMessage.success(t('plan.batchAdded', { count: created.length }))
+      resetDraft()
+      step.value = 0
+      return
     }
 
-    if (created.length) selectedRecordId.value = records.value[0].id
-    ElMessage.success(t('plan.batchAdded', { count: created.length }))
-    resetDraft()
-    step.value = 0
+    for (const image of sourceImages) {
+      if (!failedIds.has(image.id) && image.url) URL.revokeObjectURL(image.url)
+    }
+    draft.images = sourceImages.filter((image) => failedIds.has(image.id))
+    draft.room_type = draft.images.find((image) => image.room_type)?.room_type || ''
+    if (created.length) {
+      ElMessage.warning(t('plan.batchPartial', { success: created.length, failed: failedIds.size }))
+    } else {
+      ElMessage.error(t('plan.batchFailed', { count: failedIds.size }))
+    }
   } catch (error) {
     const data = error?.response?.data
     const msg = data?.detail || (data ? Object.values(data).flat().join('；') : error.message)
@@ -431,12 +564,30 @@ async function packageRecords() {
 <template>
   <div class="plan-workspace">
     <section class="plan-main">
-      <div class="step-content">
+      <div class="plan-flow">
+        <nav class="step-indicator" :aria-label="t('plan.progressLabel')">
+          <button
+            v-for="(item, index) in steps"
+            :key="item.key"
+            type="button"
+            class="step-dot"
+            :class="{ active: item.key === currentStep.key, completed: index < step }"
+            :disabled="index > step || submitting"
+            :aria-current="item.key === currentStep.key ? 'step' : undefined"
+            @click="goToStep(index)"
+          >
+            <span>{{ index + 1 }}</span>
+            <small>{{ t(item.labelKey) }}</small>
+          </button>
+        </nav>
+
+        <div class="step-content">
         <div v-show="step === 0" class="step-panel">
           <div class="plan-name-field" :class="{ 'has-error': nameRequired }">
             <label>{{ t('plan.nameLabel') }}</label>
             <el-input
               v-model="draft.plan_name"
+              :disabled="submitting"
               :maxlength="40"
               show-word-limit
               :placeholder="t('plan.namePlaceholder')"
@@ -456,17 +607,18 @@ async function packageRecords() {
                 circle
                 type="danger"
                 class="upload-remove"
+                :disabled="submitting"
                 @click="removeImage(index)"
               >
                 <el-icon><Close /></el-icon>
               </el-button>
             </div>
             <template v-if="isApp && draft.images.length < MAX_UPLOAD_IMAGES">
-              <button type="button" class="add-tile source-tile" :disabled="capturing" @click="openCamera">
+              <button type="button" class="add-tile source-tile" :disabled="capturing || submitting" @click="openCamera">
                 <el-icon :class="{ 'is-loading': capturing }"><Loading v-if="capturing" /><Camera v-else /></el-icon>
                 <span>{{ capturing ? t('plan.openingCamera') : t('plan.takePhoto') }}</span>
               </button>
-              <button type="button" class="add-tile source-tile" @click="openGallery">
+              <button type="button" class="add-tile source-tile" :disabled="submitting" @click="openGallery">
                 <el-icon><Picture /></el-icon>
                 <span>{{ t('plan.chooseAlbum') }}</span>
               </button>
@@ -477,6 +629,7 @@ async function packageRecords() {
               :auto-upload="false"
               :show-file-list="false"
               :multiple="true"
+              :disabled="submitting"
               accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
               :on-change="onFileChange"
             >
@@ -491,11 +644,11 @@ async function packageRecords() {
             <div class="native-upload-title">{{ t('plan.uploadPhotoTitle') }}</div>
             <small>{{ t('plan.uploadPhotoHint') }}</small>
             <div class="native-upload-actions">
-              <button type="button" class="native-source-button" :disabled="capturing" @click="openCamera">
+              <button type="button" class="native-source-button" :disabled="capturing || submitting" @click="openCamera">
                 <el-icon :class="{ 'is-loading': capturing }"><Loading v-if="capturing" /><Camera v-else /></el-icon>
                 <span>{{ capturing ? t('plan.openingCamera') : t('plan.takePhoto') }}</span>
               </button>
-              <button type="button" class="native-source-button" @click="openGallery">
+              <button type="button" class="native-source-button" :disabled="submitting" @click="openGallery">
                 <el-icon><Picture /></el-icon>
                 <span>{{ t('plan.chooseAlbum') }}</span>
               </button>
@@ -507,6 +660,7 @@ async function packageRecords() {
             :auto-upload="false"
             :show-file-list="false"
             :multiple="true"
+            :disabled="submitting"
             accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
             :on-change="onFileChange"
           >
@@ -581,29 +735,53 @@ async function packageRecords() {
             <div class="review-line"><span>{{ t('win.requirement') }}</span><b>{{ draft.requirement || t('common.dash') }}</b></div>
             <div class="review-line"><span>{{ t('plan.imageCount') }}</span><b>{{ draft.images.length }}</b></div>
           </div>
-          <el-button type="primary" class="generate-btn" :loading="submitting" @click="generate">
+          <el-alert
+            v-if="draft.images.length"
+            type="info"
+            :closable="false"
+            :title="t('plan.rateLimitNotice', { count: draft.images.length, max: 12 })"
+          />
+          <div v-if="batchJobs.length" class="batch-status" aria-live="polite">
+            <b>{{ t('plan.batchProgress') }}</b>
+            <div class="batch-status-list">
+              <div v-for="job in batchJobs" :key="job.id" class="batch-status-item">
+                <div>
+                  <span>{{ job.title }}</span>
+                  <small v-if="job.task.elapsed">{{ t('win.elapsed', { sec: job.task.elapsed }) }}</small>
+                </div>
+                <el-tag size="small" :type="statusTagType(job.task.status)" effect="plain">
+                  {{ t(`status.${job.task.status}`) }}
+                </el-tag>
+                <p v-if="job.task.error">{{ job.task.error }}</p>
+              </div>
+            </div>
+          </div>
+          <el-button type="primary" class="generate-btn" :loading="submitting" :disabled="submitting" @click="generate">
             <el-icon><MagicStick /></el-icon>
             {{ t('win.generate') }}
           </el-button>
         </div>
 
         <div class="step-actions">
-          <el-button :disabled="step === 0" @click="previousStep">{{ t('plan.previous') }}</el-button>
-          <el-button v-if="step < steps.length - 1" type="primary" @click="nextStep">
+          <el-button :disabled="step === 0 || submitting" @click="previousStep">{{ t('plan.previous') }}</el-button>
+          <el-button v-if="step < steps.length - 1" type="primary" :disabled="submitting" @click="nextStep">
             {{ t('plan.next') }}
           </el-button>
         </div>
+        </div>
       </div>
 
-      <DesignCoach
-        :key="designerVersion"
-        :draft="draft"
-        :has-images="Boolean(draft.images.length)"
-        :disabled="submitting"
-        @apply-patch="applyDesignerPatch"
-      />
+      <aside class="designer-sidebar">
+        <DesignCoach
+          :key="designerVersion"
+          :draft="draft"
+          :has-images="Boolean(draft.images.length)"
+          :disabled="submitting"
+          @apply-patch="applyDesignerPatch"
+        />
+      </aside>
 
-      <section class="records-section">
+      <section v-loading="recordsLoading" class="records-section">
         <div class="records-head">
           <div>
             <b>{{ t('plan.recordsTitle') }}</b>
@@ -611,7 +789,7 @@ async function packageRecords() {
           </div>
           <el-button
             type="primary"
-            :disabled="!records.length"
+            :disabled="!records.length || submitting"
             :loading="submitting"
             @click="packageRecords"
           >
@@ -634,10 +812,16 @@ async function packageRecords() {
             :class="{ active: record.id === selectedRecord?.id }"
             @click="selectedRecordId = record.id"
           >
-            <img
+            <el-image
               v-if="resolveMediaUrl(record.result?.result_url)"
               :src="resolveMediaUrl(record.result?.result_url)"
+              fit="cover"
+              class="record-thumb"
               :alt="record.title"
+              :preview-src-list="recordImageUrls"
+              :initial-index="recordImageUrls.indexOf(resolveMediaUrl(record.result?.result_url))"
+              preview-teleported
+              @click.stop
             />
             <div v-else class="record-ph"><el-icon><Picture /></el-icon></div>
             <span class="record-name">{{ record.title }}</span>
@@ -645,22 +829,45 @@ async function packageRecords() {
         </div>
 
         <div v-if="selectedRecord" class="record-detail">
-          <img
+          <el-image
             v-if="resolveMediaUrl(selectedRecord.result?.result_url)"
             :src="resolveMediaUrl(selectedRecord.result?.result_url)"
+            fit="contain"
             class="record-hero"
-            alt=""
+            :preview-src-list="recordImageUrls"
+            :initial-index="recordImageUrls.indexOf(resolveMediaUrl(selectedRecord.result?.result_url))"
+            preview-teleported
           />
           <div class="record-meta">
             <div class="record-meta-title">
               <b>{{ selectedRecord.title }}</b>
-              <el-button size="small" text type="danger" @click="records.splice(records.indexOf(selectedRecord), 1)">
+              <el-button size="small" text type="danger" :disabled="submitting" @click="records.splice(records.indexOf(selectedRecord), 1)">
                 {{ t('common.remove') }}
               </el-button>
             </div>
             <span>{{ term(selectedRecord.room_type) }} · {{ term(selectedRecord.style) }} · {{ term(selectedRecord.budget_tier) }}</span>
             <p v-if="selectedRecord.result?.design_note">{{ selectedRecord.result.design_note }}</p>
           </div>
+
+          <div v-if="selectedRecord.result?.render_mode" class="record-mode">
+            <el-tag
+              size="small"
+              :type="selectedRecord.result.render_mode === 'img2img' ? 'success' : 'info'"
+              effect="dark"
+            >
+              {{ modeLabel(selectedRecord.result.render_mode) }}
+            </el-tag>
+          </div>
+          <el-alert
+            v-if="renderModeDowngraded(selectedRecord)"
+            type="warning"
+            :closable="false"
+            :title="t('win.modeDowngraded')"
+          >
+            <el-text size="small" type="info">
+              {{ selectedRecord.result?.error || t('win.modeDowngradedTip') }}
+            </el-text>
+          </el-alert>
 
           <div class="record-people">
             <div class="person-card">
@@ -701,7 +908,15 @@ async function packageRecords() {
             <b class="furniture-title">{{ t('render.furnitureList') }}</b>
             <div class="furniture-row">
               <div v-for="item in selectedRecord.result.furnitures" :key="item.id" class="furniture-card">
-                <img v-if="resolveMediaUrl(item.image_url)" :src="resolveMediaUrl(item.image_url)" alt="" />
+                <el-image
+                  v-if="resolveMediaUrl(item.image_url)"
+                  :src="resolveMediaUrl(item.image_url)"
+                  fit="cover"
+                  class="furniture-image"
+                  :preview-src-list="furnitureImageUrls"
+                  :initial-index="furnitureImageUrls.indexOf(resolveMediaUrl(item.image_url))"
+                  preview-teleported
+                />
                 <div class="furniture-copy">
                   <b>{{ item.name }}</b>
                   <span>{{ item.brand }} · {{ term(item.category_display) }}</span>
@@ -726,15 +941,23 @@ async function packageRecords() {
 
 <style scoped>
 .plan-workspace {
-  display: block;
+  width: 100%;
+  max-width: 1480px;
+  margin: 0 auto;
 }
 
 .plan-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   border: 1px solid #e5e7eb;
   border-radius: 18px;
   background: var(--app-surface);
   padding: 16px;
 }
+
+.plan-flow,
+.designer-sidebar { min-width: 0; }
 
 .records-empty {
   display: flex;
@@ -792,13 +1015,16 @@ async function packageRecords() {
 }
 
 .record-item.active { border-color: #d1d5db; background: var(--brand-green-soft); }
-.record-item img,
+.record-thumb,
 .record-ph {
   width: 72px;
   height: 54px;
   border-radius: 9px;
   object-fit: cover;
 }
+
+.record-thumb { display: block; overflow: hidden; }
+.record-thumb :deep(.el-image__inner) { width: 100%; height: 100%; }
 
 .record-ph { display: grid; place-items: center; color: var(--brand-muted); background: var(--brand-green-soft); }
 .record-name { font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -834,6 +1060,8 @@ async function packageRecords() {
 .step-dot small { font-size: 11px; font-weight: 700; }
 .step-dot.active { color: var(--brand-green-deep); }
 .step-dot.active span { background: var(--brand-green); color: #fff; }
+.step-dot.completed span { background: rgba(35, 169, 124, 0.2); }
+.step-dot:disabled { cursor: not-allowed; opacity: 0.5; }
 
 .step-content { min-height: 0; }
 .step-panel { display: flex; flex-direction: column; gap: 12px; }
@@ -1031,6 +1259,31 @@ async function packageRecords() {
 }
 .generate-btn { width: 100%; margin-top: 8px; }
 
+.batch-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(35, 169, 124, 0.2);
+  border-radius: 14px;
+  background: rgba(240, 252, 247, 0.64);
+}
+.batch-status > b { font-size: 13px; color: var(--brand-green-deep); }
+.batch-status-list { display: grid; gap: 7px; }
+.batch-status-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  background: #fff;
+}
+.batch-status-item > div { display: flex; flex-direction: column; min-width: 0; }
+.batch-status-item span { overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.batch-status-item small { color: var(--brand-muted); font-size: 10px; }
+.batch-status-item p { grid-column: 1 / -1; margin: 0; color: #d14343; font-size: 11px; line-height: 1.45; }
+
 .record-detail {
   display: flex;
   flex-direction: column;
@@ -1039,17 +1292,21 @@ async function packageRecords() {
 }
 
 .record-hero {
+  display: block;
   width: 100%;
   max-height: 420px;
+  overflow: hidden;
   object-fit: contain;
   border-radius: 14px;
   background: var(--brand-green-soft);
 }
+.record-hero :deep(.el-image__inner) { max-height: 420px; }
 
 .record-meta-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .record-meta-title b { font-size: 16px; }
 .record-meta > span { color: var(--brand-muted); font-size: 13px; }
 .record-meta p { margin: 8px 0 0; font-size: 13px; line-height: 1.6; }
+.record-mode { display: flex; align-items: center; gap: 8px; }
 
 .record-people {
   display: grid;
@@ -1088,18 +1345,42 @@ async function packageRecords() {
   background: #f7fbf9;
 }
 
-.furniture-card img {
+.furniture-image {
   width: 52px;
   height: 52px;
+  overflow: hidden;
   border-radius: 9px;
   object-fit: cover;
   flex: none;
 }
+.furniture-image :deep(.el-image__inner) { width: 100%; height: 100%; }
 
 .furniture-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .furniture-copy b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .furniture-copy span { color: var(--brand-muted); font-size: 11px; }
 .furniture-copy em { font-style: normal; color: var(--brand-green-deep); font-weight: 800; font-size: 12px; }
+
+@media (min-width: 1024px) {
+  .plan-main {
+    grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
+    gap: 22px;
+    padding: 22px;
+  }
+
+  .designer-sidebar {
+    position: sticky;
+    top: 84px;
+    align-self: start;
+  }
+
+  .designer-sidebar :deep(.designer-card) { margin-top: 0; }
+  .records-section { grid-column: 1 / -1; }
+  .upload-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .record-detail { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr); }
+  .record-hero { grid-row: 1 / span 5; }
+  .record-furniture,
+  .record-people { grid-column: 2; }
+}
 
 @media (max-width: 720px) {
   .upload-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

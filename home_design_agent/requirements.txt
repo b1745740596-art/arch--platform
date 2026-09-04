@@ -1,6 +1,6 @@
 # ---- Web framework ----
 Django==5.2.17
-djangorestframework==3.16.1
+djangorestframework==3.17.2
 django-cors-headers==4.3.1
 django-environ==0.11.2
 django-simpleui==2026.1.13
@@ -14,7 +14,7 @@ numpy==1.26.4
 Pillow==12.3.0
 pillow-heif==1.5.0
 pdf2image==1.17.0
-pypdf==6.15.0
+pypdf==6.16.1
 
 # ---- AI / LLM orchestration (PRD 5.2, 5.3) ----
 openai==1.30.1

@@ -20,13 +20,10 @@ let autoUpdatePromptShown = false
 
 const isApp = computed(() => isNativeApp())
 const defaultPath = computed(() => appDefaultRoute())
-const logoutPath = computed(() => (isApp.value ? '/login' : '/'))
+const logoutPath = '/login'
 
 const navItems = computed(() => {
   const items = []
-  if (!isApp.value) {
-    items.push({ path: '/', key: 'nav.home', icon: 'HomeFilled' })
-  }
   items.push({ path: '/my-home', key: 'nav.myHome', icon: 'House' })
   items.push({ path: '/talk', key: 'nav.talkbot', icon: 'ChatDotRound' })
   items.push({ path: '/requirement', key: 'nav.requirement', icon: 'ChatDotRound' })
@@ -47,7 +44,7 @@ const localeShort = computed(
 const avatarLetter = computed(() => (auth.user?.username || 'U').slice(0, 1).toUpperCase())
 
 function isActive(path) {
-  return path === '/' ? route.path === '/' : route.path.startsWith(path)
+  return route.path === path || route.path.startsWith(`${path}/`)
 }
 
 function switchLocale(locale) {
@@ -57,7 +54,7 @@ function switchLocale(locale) {
 
 async function doLogout() {
   await auth.logout()
-  router.push(logoutPath.value)
+  router.push(logoutPath)
 }
 
 async function configureAppChrome() {

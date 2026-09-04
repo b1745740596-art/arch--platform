@@ -7,7 +7,6 @@ import StudioView from './StudioView.vue'
 import RequirementView from './RequirementView.vue'
 import IntakeView from './IntakeView.vue'
 import CommunityFeed from '@/components/CommunityFeed.vue'
-import { useStudioStore } from '@/stores/studio'
 import { useAccountStore } from '@/stores/account'
 import { api } from '@/api/client'
 import { currentLocale, useTerm } from '@/i18n'
@@ -18,7 +17,6 @@ const { t } = useI18n()
 const term = useTerm()
 const route = useRoute()
 const router = useRouter()
-const studio = useStudioStore()
 const account = useAccountStore()
 
 const tab = ref('studio')
@@ -28,7 +26,6 @@ const orders = ref([])
 const reportsLoading = ref(false)
 const ordersLoading = ref(false)
 const orderSubmitting = ref(false)
-const combining = ref(false)
 const selectedReportId = ref(null)
 
 const isApp = computed(() => isNativeApp())
@@ -40,20 +37,6 @@ const TABS = [
   { key: 'report', icon: 'Document', labelKey: 'myHome.tabReport' },
   { key: 'requirement-info', icon: 'EditPen', labelKey: 'myHome.tabRequirementInfo' },
 ]
-
-const tierBudget = {
-  经济: [80000, 160000],
-  品质: [160000, 320000],
-  高端: [320000, 600000],
-}
-
-const completedWindows = computed(
-  () => studio.windows.filter((w) => w.status === 'success' && w.result?.id),
-)
-const batchBusy = computed(
-  () => studio.windows.some((w) => ['queued', 'running', 'validating'].includes(w.status)),
-)
-const canCombine = computed(() => completedWindows.value.length > 0 && !batchBusy.value)
 
 const selectedReport = computed(
   () => reports.value.find((r) => r.id === selectedReportId.value) || reports.value[0] || null,
@@ -81,111 +64,10 @@ function money(v) {
   return v == null ? t('common.dash') : '¥' + Number(v).toLocaleString()
 }
 
-function furnitureTotal(report) {
-  return (report?.furnitures || []).reduce((sum, f) => sum + (Number(f.price) || 0), 0)
-}
-
-function buildBudgetAdvice(win, total) {
-  const range = tierBudget[win.form.budget_tier] || [120000, 280000]
-  const extra = Math.max(0, Math.round(range[1] - total))
-  return t('myHome.budgetAdvice', {
-    min: money(range[0]),
-    max: money(range[1]),
-    furniture: money(total),
-    extra: money(extra),
-  })
-}
-
 function buildRenovationAdvice(report) {
   const base = t('myHome.renovationBase')
   const note = report?.design_note ? ` ${report.design_note}` : ''
   return `${base}${note}`
-}
-
-function normalizeFurnitures(list) {
-  return (list || []).map((f) => ({
-    id: f.id,
-    name: f.name,
-    brand: f.brand,
-    category_display: f.category_display,
-    price: f.price,
-    buy_url: f.buy_url,
-    image_url: resolveMediaUrl(f.image_url),
-  }))
-}
-
-function windowSnapshot(win) {
-  const result = win.result
-  const furnitures = normalizeFurnitures(result?.furnitures)
-  const total = furnitures.reduce((sum, f) => sum + (Number(f.price) || 0), 0)
-  const range = tierBudget[win.form.budget_tier] || [120000, 280000]
-  return {
-    title: win.title || `${win.form.room_type}·${win.form.style}`,
-    room_type: win.form.room_type,
-    style: win.form.style,
-    budget_tier: win.form.budget_tier,
-    result_url: resolveMediaUrl(result?.result_url || result?.result_image_url),
-    design_note: result?.design_note || '',
-    furnitures,
-    designer: result?.designer || null,
-    contractor: result?.contractor || null,
-    applied_modules: result?.applied_modules || [],
-    budget_min: range[0],
-    budget_max: range[1],
-    furniture_total: total,
-    budget_advice: buildBudgetAdvice(win, total),
-  }
-}
-
-function aggregateFurnitures(windows) {
-  const map = new Map()
-  for (const win of windows) {
-    for (const f of win.furnitures) {
-      const key = f.id || `${f.name}-${f.price}-${f.brand}`
-      if (!map.has(key)) map.set(key, f)
-    }
-  }
-  return [...map.values()]
-}
-
-function combinedTitle(windows) {
-  return t('myHome.combinedReportTitle', { count: windows.length })
-}
-
-function buildCombinedPayload() {
-  const windows = completedWindows.value.map(windowSnapshot)
-  const first = windows[0] || {}
-  const furnitures = aggregateFurnitures(windows)
-  const furnitureTotalValue = furnitures.reduce((sum, f) => sum + (Number(f.price) || 0), 0)
-  const budget_min = windows.reduce((sum, w) => sum + (Number(w.budget_min) || 0), 0)
-  const budget_max = windows.reduce((sum, w) => sum + (Number(w.budget_max) || 0), 0)
-  const notes = windows
-    .filter((w) => w.design_note)
-    .map((w) => `【${w.title}】${w.design_note}`)
-    .join('\n\n')
-
-  return {
-    title: combinedTitle(windows),
-    room_type: first.room_type || '',
-    style: first.style || '',
-    budget_tier: first.budget_tier || '',
-    result_url: first.result_url || null,
-    windows,
-    furnitures,
-    designer: first.designer || null,
-    contractor: first.contractor || null,
-    budget_min,
-    budget_max,
-    furniture_total: furnitureTotalValue,
-    design_note: notes,
-    budget_advice: t('myHome.combinedBudgetAdvice', {
-      count: windows.length,
-      min: money(budget_min),
-      max: money(budget_max),
-      furniture: money(furnitureTotalValue),
-    }),
-    window_count: windows.length,
-  }
 }
 
 async function loadReports() {
@@ -224,61 +106,6 @@ function extractError(e) {
     if (first) return `${first[0]}: ${[].concat(first[1]).join('; ')}`
   }
   return e?.message || String(e || '')
-}
-
-async function combineAndOrder() {
-  if (!canCombine.value) {
-    ElMessage.warning(t('myHome.combineUnavailable'))
-    return
-  }
-  combining.value = true
-  try {
-    const payload = buildCombinedPayload()
-    const firstWindow = completedWindows.value[0]
-    let projectId = studio.sessionProjectId || firstWindow.projectId
-
-    if (!projectId) {
-      const project = await api.createProject({ title: payload.title })
-      projectId = project.id
-      studio.sessionProjectId = project.id
-    }
-
-    const saved = await api.saveReport({
-      project: projectId,
-      render_job: firstWindow.result.id,
-      title: payload.title,
-      room_type: payload.room_type,
-      style: payload.style,
-      budget_tier: payload.budget_tier,
-      report: payload,
-    })
-
-    await api.createOrder({
-      consent: true,
-      project: projectId,
-      report: saved.id,
-      title: payload.title,
-      amount_min: payload.budget_min,
-      amount_max: payload.budget_max,
-      items: payload.furnitures.map((f) => ({
-        name: f.name,
-        category: f.category_display,
-        price: f.price,
-        quantity: 1,
-        amount: f.price,
-      })),
-      payload,
-    })
-
-    ElMessage.success(t('myHome.combinedCreated'))
-    selectedReportId.value = saved.id
-    await Promise.all([loadReports(), loadOrders()])
-    tab.value = 'orders'
-  } catch (e) {
-    ElMessage.error(t('myHome.combinedFailed', { msg: extractError(e) }))
-  } finally {
-    combining.value = false
-  }
 }
 
 async function placeOrder() {
@@ -357,11 +184,6 @@ async function deleteReport(report) {
   }
 }
 
-function openWorkbench() {
-  if (studio.canAddWindow) studio.addWindow()
-  tab.value = 'studio'
-}
-
 function goRecharge() {
   router.push('/billing')
 }
@@ -377,7 +199,8 @@ function applyRouteTab() {
 
 onMounted(() => {
   applyRouteTab()
-  studio.startSession()
+  // 保留当前生图项目，刷新或重新进入后由 PlanWorkspace 回灌历史结果。
+  // 失效或不属于当前账号的项目 ID 会在回灌校验时自动清除。
   loadReports()
   loadOrders()
   if (isApp.value) account.fetchProfile().catch(() => {})
@@ -408,19 +231,16 @@ watch(
       </div>
       <div class="head-actions">
         <el-button
+          tag="a"
+          href="/media/app/arch-ai.apk"
+          target="_blank"
+          rel="noopener"
           type="primary"
           size="large"
-          :loading="combining"
-          :disabled="!canCombine"
-          @click="combineAndOrder"
+          class="app-download-cta"
         >
-          <el-icon><DocumentAdd /></el-icon>
-          {{ t('myHome.combineAndOrder') }}
-          <template v-if="completedWindows.length">（{{ completedWindows.length }}）</template>
-        </el-button>
-        <el-button size="large" @click="openWorkbench">
-          <el-icon><Plus /></el-icon>
-          {{ t('myHome.newTask') }}
+          <el-icon><Cellphone /></el-icon>
+          {{ t('myHome.downloadApp') }}
         </el-button>
       </div>
     </section>
@@ -809,6 +629,10 @@ watch(
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+}
+
+.app-download-cta {
+  min-width: 176px;
 }
 
 .home-bar {
@@ -1385,6 +1209,8 @@ watch(
 
 @media (max-width: 860px) {
   .home-head { flex-direction: column; align-items: flex-start; }
+  .head-actions { width: 100%; }
+  .app-download-cta { width: 100%; margin-left: 0; }
   .report-layout { grid-template-columns: 1fr; }
   .report-list { position: static; max-height: none; }
   .people-grid { grid-template-columns: 1fr; }

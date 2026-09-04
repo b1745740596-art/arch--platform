@@ -8,9 +8,9 @@ export function isNativeApp() {
   )
 }
 
-/** App 端的默认落地页：打开后直接进入核心生成能力。 */
+/** Web 与 App 的统一默认落地页。 */
 export function appDefaultRoute() {
-  return isNativeApp() ? '/my-home' : '/'
+  return '/my-home'
 }
 
 /** 读取原生壳版本号；非原生环境或插件不可用时返回 0.0.0。 */

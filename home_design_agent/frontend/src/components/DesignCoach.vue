@@ -30,6 +30,11 @@ const pendingImageRefresh = ref(false)
 const canSend = computed(
   () => Boolean(input.value.trim()) && !loading.value && !props.disabled,
 )
+const normalizedProgress = computed(() => {
+  const value = Number(progress.value)
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+})
 
 function draftPayload() {
   return {
@@ -155,16 +160,37 @@ watch(
         <b>{{ t('designer.title') }}</b>
         <small>{{ ready ? t('designer.ready') : t('designer.guiding') }}</small>
       </span>
-      <span class="designer-progress">{{ progress }}%</span>
       <el-icon><Clock /></el-icon>
     </button>
+
+    <div
+      class="designer-progress"
+      role="progressbar"
+      :aria-label="t('designer.progress')"
+      :aria-valuenow="normalizedProgress"
+      aria-valuemin="0"
+      aria-valuemax="100"
+    >
+      <div class="designer-progress-copy">
+        <span>{{ t('designer.progress') }}</span>
+        <b>{{ normalizedProgress }}%</b>
+      </div>
+      <div class="designer-progress-track" aria-hidden="true">
+        <span :style="{ width: `${normalizedProgress}%` }"></span>
+      </div>
+    </div>
 
     <div class="designer-message" :class="{ loading }">
       <span v-if="loading">{{ t('designer.thinking') }}</span>
       <span v-else>{{ currentMessage || t('designer.welcome') }}</span>
     </div>
 
-    <div v-if="quickReplies.length" class="designer-replies">
+    <div
+      v-if="quickReplies.length"
+      class="designer-replies"
+      role="group"
+      :aria-label="t('designer.quickReplies')"
+    >
       <button
         v-for="reply in quickReplies"
         :key="reply"
@@ -250,8 +276,35 @@ watch(
 .designer-title { display: flex; flex: 1; min-width: 0; flex-direction: column; }
 .designer-title b { font-size: 14px; }
 .designer-title small { color: var(--brand-muted); font-size: 10px; }
-.designer-progress { color: #17865f; font-size: 11px; font-weight: 700; }
 .designer-head .el-icon { color: var(--brand-muted); }
+
+.designer-progress { margin-top: 10px; }
+.designer-progress-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  color: var(--brand-muted);
+  font-size: 10px;
+}
+.designer-progress-copy b {
+  color: #17865f;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.designer-progress-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(35, 169, 124, 0.13);
+}
+.designer-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #35bd8d, #16865f);
+  transition: width 240ms ease;
+}
 
 .designer-message {
   display: -webkit-box;
@@ -281,10 +334,16 @@ watch(
   border-radius: 999px;
   background: #fff;
   color: #176b4f;
+  cursor: pointer;
   font: inherit;
   font-size: 11px;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
-.designer-replies button:disabled { opacity: 0.55; }
+.designer-replies button:disabled { cursor: not-allowed; opacity: 0.55; }
+.designer-replies button:focus-visible {
+  outline: 2px solid rgba(23, 134, 95, 0.42);
+  outline-offset: 2px;
+}
 
 .designer-input { display: flex; align-items: center; gap: 8px; }
 .designer-input .el-button { flex: 0 0 auto; color: #fff; }
@@ -304,4 +363,24 @@ watch(
   text-align: left;
 }
 .history-bubble.user p { background: #dff5ec; }
+
+@media (hover: hover) {
+  .designer-replies button:not(:disabled):hover {
+    border-color: rgba(23, 134, 95, 0.48);
+    background: #effaf6;
+    transform: translateY(-1px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .designer-replies {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .designer-progress-track span,
+  .designer-replies button { transition: none; }
+}
 </style>

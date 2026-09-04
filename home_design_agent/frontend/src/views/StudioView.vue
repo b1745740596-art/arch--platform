@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useStudioStore } from '@/stores/studio'
@@ -11,6 +11,7 @@ import PlanWorkspace from '@/components/PlanWorkspace.vue'
 const studio = useStudioStore()
 const { t } = useI18n()
 const isApp = computed(() => isNativeApp())
+const professionalMode = ref(false)
 
 // 宽屏两列：按索引奇偶拆分，保证卡片高度不一致时也不会互相拉扯
 const leftColumn = computed(() => studio.windows.filter((_, i) => i % 2 === 0))
@@ -20,12 +21,14 @@ const readyCount = computed(
   () => studio.windows.filter((w) => studio.windowIssues(w).length === 0 && !['queued', 'running'].includes(w.status)).length,
 )
 
-onMounted(async () => {
-  // store 为应用级单例：重新进入时补回预览 URL
+async function switchProfessionalMode(enabled) {
+  if (!enabled || isApp.value) return
+  // 专业模式沿用旧多窗口板；首次进入时补回预览并创建默认窗口。
   studio.rehydratePreviews()
   await studio.loadOptions()
-  if (!isApp.value && !studio.windows.length) studio.addWindow()
-})
+  if (!professionalMode.value || isApp.value) return
+  if (!studio.windows.length) studio.addWindow()
+}
 
 // 离开页面时释放预览 URL 并取消进行中的请求，避免内存泄漏
 onBeforeUnmount(() => {
@@ -96,11 +99,23 @@ function closeAll() {
 
 <template>
   <div class="studio" :class="{ 'is-app': isApp }">
-    <PlanWorkspace v-if="isApp" />
+    <div v-if="!isApp" class="mode-switcher">
+      <div class="mode-switcher-copy">
+        <b>{{ t('studio.professionalMode') }}</b>
+        <small>{{ t('studio.professionalModeHint') }}</small>
+      </div>
+      <el-switch
+        v-model="professionalMode"
+        :aria-label="t('studio.professionalMode')"
+        @change="switchProfessionalMode"
+      />
+    </div>
 
-    <template v-else>
+    <PlanWorkspace v-show="isApp || !professionalMode" />
+
+    <template v-if="!isApp && professionalMode">
       <!-- 顶部工具栏 -->
-      <el-card v-if="!isApp" shadow="never" class="toolbar">
+      <el-card shadow="never" class="toolbar">
       <div class="tb">
         <div class="tb-l">
           <h3 class="tb-title">{{ t('studio.title') }}</h3>
@@ -179,6 +194,26 @@ function closeAll() {
 
 <style scoped>
 .studio { width: 100%; }
+.mode-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px solid rgba(35, 169, 124, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.mode-switcher-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+.mode-switcher-copy b { color: var(--brand-ink); font-size: 13px; }
+.mode-switcher-copy small { color: var(--brand-muted); font-size: 12px; }
 .toolbar { margin-bottom: 16px; }
 .tb { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .tb-l { min-width: 0; }

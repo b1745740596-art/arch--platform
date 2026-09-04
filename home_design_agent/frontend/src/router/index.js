@@ -1,13 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '@/views/HomeView.vue'
 import { useAuthStore } from '@/stores/auth'
-import { appDefaultRoute, isNativeApp } from '@/utils/app'
+import { appDefaultRoute } from '@/utils/app'
 
 const routes = [
-  { path: '/', name: 'home', component: HomeView },
+  { path: '/', redirect: '/my-home' },
   { path: '/my-home', name: 'my-home', component: () => import('@/views/MyHomeView.vue') },
   { path: '/render', name: 'render', component: () => import('@/views/RenderView.vue') },
-  { path: '/studio', name: 'studio', component: () => import('@/views/StudioView.vue') },
+  {
+    path: '/studio',
+    name: 'studio',
+    redirect: (to) => ({ path: '/my-home', query: to.query, hash: to.hash }),
+  },
   {
     path: '/community/:id',
     name: 'community-post',
@@ -47,16 +50,9 @@ const router = createRouter({
   routes,
 })
 
-const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password']
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password']
 
 router.beforeEach(async (to) => {
-  // App 端去掉营销首页：打开即进入核心生成能力。
-  if (isNativeApp() && to.path === '/') {
-    const auth = useAuthStore()
-    const user = await auth.restoreSession()
-    if (user) return { path: '/my-home', replace: true }
-    return { path: '/login', query: { redirect: '/my-home' }, replace: true }
-  }
   if (PUBLIC_PATHS.includes(to.path)) return true
   const auth = useAuthStore()
   const user = await auth.restoreSession()

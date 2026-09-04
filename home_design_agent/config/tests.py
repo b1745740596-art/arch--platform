@@ -254,15 +254,21 @@ class PrivateShowcaseTests(TestCase):
     def test_showcase_requires_authentication(self):
         self.assertEqual(self.client.get(self.url).status_code, 403)
 
-    def test_showcase_only_returns_current_users_jobs(self):
+    def test_showcase_returns_cross_user_cases_with_safe_fields_only(self):
         self.client.force_login(self.alice)
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
         images = response.json()['images']
-        self.assertEqual([image['id'] for image in images], [self.alice_render.id])
-        self.assertNotIn(str(self.bob_render.id), response.content.decode())
+        self.assertEqual(
+            {image['id'] for image in images},
+            {self.alice_render.id, self.bob_render.id},
+        )
+        self.assertTrue(all(
+            set(image) <= {'id', 'url', 'room_type', 'style'}
+            for image in images
+        ))
 
 
 class BrowserSecurityHeaderTests(TestCase):
